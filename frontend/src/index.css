@@ -1,0 +1,42 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #263b30;
+  background: #f5f4ef;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button { font: inherit; }
+
+.page {
+  max-width: 640px;
+  margin: 64px auto;
+  padding: 0 24px;
+}
+
+h1 { margin-bottom: 8px; }
+h2 { margin-top: 0; font-size: 20px; }
+
+.connection-card {
+  margin-top: 32px;
+  padding: 24px;
+  background: white;
+  border: 1px solid #dce2da;
+  border-radius: 16px;
+}
+
+.status { line-height: 1.6; }
+.connected { color: #276238; }
+.error { color: #9b382b; }
+
+button {
+  padding: 10px 16px;
+  color: white;
+  background: #294e39;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.6; cursor: wait; }
+button:focus-visible { outline: 3px solid #83a970; outline-offset: 3px; }
