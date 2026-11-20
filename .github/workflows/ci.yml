@@ -15,15 +15,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
-    name: Backend checks
+  quality:
+    name: Tests, coverage and SonarQube
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
+
+    env:
+      CALORIE_DB_HOST: 127.0.0.1
+      CALORIE_DB_PORT: "5433"
+      CALORIE_DB_NAME: calorie_tracker
+      CALORIE_DB_USER: calorie_app
+      CALORIE_DB_PASSWORD: ci_only_password
+
+    services:
+      db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: calorie_tracker
+          POSTGRES_USER: calorie_app
+          POSTGRES_PASSWORD: ci_only_password
+        ports:
+          - "127.0.0.1:5433:5432"
+        options: >-
+          --health-cmd "pg_isready -U calorie_app -d calorie_tracker"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
@@ -35,28 +58,24 @@ jobs:
 
       - name: Install backend dependencies
         run: |
-          python -m pip install --only-binary :all: --require-hashes -r backend/requirements-ci.lock
+          python -m pip install \
+            --only-binary :all: \
+            --require-hashes \
+            -r backend/requirements-ci.lock
 
-      - name: Check dependency compatibility
-        run: python -m pip check
+      - name: Check backend dependencies and syntax
+        run: |
+          python -m pip check
+          python -m compileall -q backend/app
 
-      - name: Check Python syntax
-        run: python -m compileall -q backend/app
-
-  frontend:
-    name: Frontend checks
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+      - name: Run backend tests with coverage
+        run: |
+          python -m pytest \
+            --cov \
+            --cov-config=pyproject.toml \
+            --cov-report=term-missing \
+            --cov-report=xml:backend/coverage.xml \
+            --cov-report=json:backend/coverage.json
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -69,8 +88,45 @@ jobs:
         working-directory: frontend
         run: npm ci --ignore-scripts
 
-      - name: Run ESLint
-        run: npm run lint
+      - name: Run frontend lint
+        run: npm --prefix frontend run lint
 
       - name: Check TypeScript and build
-        run: npm run build
+        run: npm --prefix frontend run build
+
+      - name: Run frontend tests with coverage
+        run: npm --prefix frontend run test:coverage
+
+      - name: Check reports and enforce 80% combined line coverage
+        run: |
+          test -s backend/coverage.xml
+          test -s frontend/coverage/lcov.info
+          python scripts/check_coverage.py
+
+      - name: Validate SonarQube configuration
+        id: sonar_config
+        if: >-
+          github.ref == 'refs/heads/main' ||
+          (github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+        run: |
+          : "${SONAR_TOKEN:?Set the SONAR_TOKEN repository secret}"
+          : "${SONAR_ORGANIZATION:?Set the SONAR_ORGANIZATION Actions variable}"
+          : "${SONAR_PROJECT_KEY:?Set the SONAR_PROJECT_KEY Actions variable}"
+
+      - name: Run SonarQube analysis and quality gate
+        if: steps.sonar_config.outcome == 'success'
+        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: .
+          args: >-
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
