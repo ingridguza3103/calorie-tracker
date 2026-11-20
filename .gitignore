@@ -12,3 +12,13 @@ __pycache__/
 # Frontend dependencies and builds
 node_modules/
 dist/
+
+
+# Test output
+.pytest_cache/
+.coverage
+.coverage.*
+backend/coverage.xml
+backend/coverage.json
+frontend/coverage/
+.vitest/
