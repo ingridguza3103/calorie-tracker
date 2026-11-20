@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+
+[tool.coverage.run]
+branch = true
+source = ["backend/app"]
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
