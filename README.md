@@ -58,7 +58,7 @@ differences between the database schema and the application models.
 
 The frontend includes registration, login, session restoration, and logout.
 Usernames use 3–64 ASCII letters or numbers and are case-sensitive. Passwords
-use 15–128 characters; spaces and symbols are accepted. Passwords are hashed
+use 8–128 characters; spaces and symbols are accepted. Passwords are hashed
 with Argon2id. Registration also signs the new user in.
 
 Login sessions last up to seven days and are carried in an HttpOnly cookie.

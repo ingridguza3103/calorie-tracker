@@ -69,6 +69,17 @@ def test_duplicate_username_is_rejected(client: TestClient, details: dict[str, s
     assert response.json() == {"detail": "That username is already taken."}
 
 
+@pytest.mark.parametrize("length,expected_status", [(7, 422), (8, 201)])
+def test_registration_password_length_boundary(
+    client: TestClient, details: dict[str, str], length: int, expected_status: int,
+) -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={**details, "password": secrets.token_hex(4)[:length]},
+    )
+    assert response.status_code == expected_status
+
+
 @pytest.mark.parametrize("field,value", [
     ("username", "ab"), ("username", "not valid"), ("username", "a" * 65),
     ("password", "short"), ("password", "a" * 129), ("password", None),

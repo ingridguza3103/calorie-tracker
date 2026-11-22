@@ -62,11 +62,9 @@ export function PageFrame({ children }: Readonly<{ children: ReactNode }>) {
             <span className="pink-dot" /> YOUR DAY, A LITTLE CLEARER
           </p>
           <h1 id="welcome-heading">
-            Your food.
-            <br />
-            Your goals.
-            <br />
-            <span className="headline-highlight">Your own pace.</span>
+            <span className="headline-line">Your food.</span>
+            <span className="headline-line">Your goals.</span>
+            <span className="headline-line headline-highlight">Your own pace.</span>
           </h1>
           <p className="welcome-copy">
             Build a little awareness.

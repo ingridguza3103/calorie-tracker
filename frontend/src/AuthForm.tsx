@@ -32,7 +32,7 @@ const formModes = {
     usernameMin: 3,
     usernamePattern: '[A-Za-z0-9]+',
     usernameHelp: 'username-help',
-    passwordMin: 15,
+    passwordMin: 8,
     passwordComplete: 'new-password',
     passwordHelp: 'password-help',
   },
@@ -142,7 +142,7 @@ export function AuthForm({ onAuthenticated }: Readonly<Props>) {
         </div>
         {registering && (
           <p className="field-help" id="password-help">
-            Use 15 or more characters. Spaces and symbols are welcome.
+            Use 8 or more characters. Spaces and symbols are welcome.
           </p>
         )}
         {error && (

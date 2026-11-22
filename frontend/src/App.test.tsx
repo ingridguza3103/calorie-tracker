@@ -91,7 +91,7 @@ describe('Accounts', () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: 'Sign up' }))
     expect(screen.getByRole('heading', { name: 'Make it your own.' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Password')).toHaveAttribute('minlength', '15')
+    expect(screen.getByLabelText('Password')).toHaveAttribute('minlength', '8')
     await user.type(screen.getByLabelText('Username'), person.username)
     await user.type(screen.getByLabelText('Password'), passphrase)
     await user.click(screen.getByRole('button', { name: 'Show password' }))

@@ -23,7 +23,7 @@ dummy_hash = password_hasher.hash(secrets.token_urlsafe(32))
 
 class Registration(BaseModel):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9]+$")
-    password: SecretStr = Field(min_length=15, max_length=128)
+    password: SecretStr = Field(min_length=8, max_length=128)
 
 
 class Credentials(BaseModel):
