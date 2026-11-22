@@ -68,6 +68,11 @@ jobs:
           python -m pip check
           python -m compileall -q backend/app
 
+      - name: Apply and check database migrations
+        run: |
+          python -m alembic -c backend/alembic.ini upgrade head
+          python -m alembic -c backend/alembic.ini check
+
       - name: Run backend tests with coverage
         run: |
           python -m pytest \
