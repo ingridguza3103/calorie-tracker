@@ -3,6 +3,7 @@ import { accountErrorMessage } from './api'
 import { OnboardingWizard } from './OnboardingWizard'
 import { ConnectionNotice } from './ConnectionNotice'
 import { PlanPanel } from './PlanPanel'
+import { FoodPanel } from './FoodPanel'
 import {
   genderLabels,
   goalLabels,
@@ -171,6 +172,7 @@ export function ProfilePanel({
           onSessionExpired={onSessionExpired}
           onEdit={editProfile}
         />
+        <FoodPanel onSessionExpired={onSessionExpired} />
         <ProfileSummary profile={state.profile} onEdit={editProfile} />
       </div>
     )
