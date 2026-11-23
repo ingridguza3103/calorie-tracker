@@ -11,12 +11,13 @@ from app.profiles import router as profile_router
 from app.maintenance import router as maintenance_router
 from app.plans import router as plan_router
 from app.foods import router as food_router
+from app.diary import router as diary_router
 
 async def prevent_private_caching(
     request: Request, call_next: RequestResponseEndpoint,
 ) -> Response:
     response = await call_next(request)
-    if request.url.path.startswith(("/api/auth/", "/api/profile", "/api/maintenance", "/api/plan", "/api/food/")):
+    if request.url.path.startswith(("/api/auth/", "/api/profile", "/api/maintenance", "/api/plan", "/api/food/", "/api/diary")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     api.include_router(maintenance_router)
     api.include_router(plan_router)
     api.include_router(food_router)
+    api.include_router(diary_router)
     api.middleware("http")(prevent_private_caching)
     api.add_exception_handler(RequestValidationError, safe_validation_errors)
     api.add_api_route("/api/health", health, methods=["GET"])

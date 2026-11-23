@@ -3,7 +3,7 @@ import { accountErrorMessage } from './api'
 import { OnboardingWizard } from './OnboardingWizard'
 import { ConnectionNotice } from './ConnectionNotice'
 import { PlanPanel } from './PlanPanel'
-import { FoodPanel } from './FoodPanel'
+import { DiaryWorkspace } from './DiaryPanel'
 import {
   genderLabels,
   goalLabels,
@@ -91,6 +91,7 @@ export function ProfilePanel({
   const [state, setState] = useState<ProfileState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [editing, setEditing] = useState(false)
+  const [planRevision, setPlanRevision] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const saveController = useRef<AbortController | null>(null)
@@ -171,8 +172,9 @@ export function ProfilePanel({
           profile={state.profile}
           onSessionExpired={onSessionExpired}
           onEdit={editProfile}
+          onPlanChanged={() => setPlanRevision((value) => value + 1)}
         />
-        <FoodPanel onSessionExpired={onSessionExpired} />
+        <DiaryWorkspace revision={planRevision} onSessionExpired={onSessionExpired} />
         <ProfileSummary profile={state.profile} onEdit={editProfile} />
       </div>
     )

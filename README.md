@@ -2,7 +2,7 @@
 
 A calorie-tracking application in development, using FastAPI, React with
 TypeScript, and PostgreSQL. It includes account profiles, calorie plans, and
-text-based AI food nutrition estimates. A daily food diary is planned.
+text-based AI food nutrition estimates, and a daily diary with calorie progress.
 
 ## Local development
 
@@ -52,6 +52,7 @@ per account, including activity information and weight goals. Existing accounts
 can continue signing in before creating a profile.
 A fourth migration adds one saved calorie and nutrient plan per profile.
 A fifth stores food nutrition estimates with their serving and cooking notes.
+A sixth adds dated diary entries, serving multipliers, and safe save retries.
 
 After editing the SQLAlchemy models, generate and review a migration:
 
@@ -105,8 +106,8 @@ python -m alembic -c backend/alembic.ini check
 python -m alembic -c backend/alembic.ini current
 ```
 
-The final command should show `0005_food_estimates (head)`. Alembic creates the
-users, sessions, profiles, plans, and food-estimate tables in Neon. Existing Docker
+The final command should show `0006_diary_entries (head)`. Alembic creates the
+users, sessions, profiles, plans, food-estimate, and diary tables in Neon. Existing Docker
 records require a separate data import; schema migrations do not copy them.
 You can register a fresh account when testing the Neon-backed application.
 
@@ -479,8 +480,8 @@ an AI request. All displayed totals cover the complete described serving.
 ### Migration and configuration
 
 Keep the existing Groq key, model, database configuration, and `.env.example`.
-No new dependencies or secrets are needed. Apply `0005_food_estimates` before
-starting the updated application locally:
+No new dependencies or secrets are needed. Apply migrations through the current
+head before starting the updated application locally:
 
 ```bash
 source backend/.venv/bin/activate
@@ -537,8 +538,8 @@ Changing the prompt's estimation rules should also increment
 concurrent duplicate inserts safe; a browser double submit is also disabled.
 
 Food estimates are separate from dated diary entries. Creating an estimate
-does not change the calorie plan or a daily consumed total; the diary feature
-will attach estimates to entries later. The preview stays in component memory,
+does not change the calorie plan or a daily consumed total; **Add to diary**
+saves a dated entry using that estimate. The preview stays in component memory,
 is cleared when editing its description, and is discarded on logout or reload.
 Repeating the description can restore its saved estimate. No food data is put
 in localStorage. Leaving or signing out cancels the pending browser operation.
@@ -568,6 +569,82 @@ Automated checks use mocked Groq responses and verify validation, ownership,
 cache reuse, quota/timeout handling, and browser cancellation. They do not claim
 to measure the configured model's real-world nutrition accuracy. Test the live
 connection locally with your existing private Groq key.
+
+## Daily food diary
+
+After estimating a food, choose **Servings to log** and **Add to diary**. One
+serving logs the complete description; 0.5 logs half and 2 logs twice that
+amount. Multiple foods described in one estimate remain one combined entry.
+**Add again** deliberately creates a separate entry using the same estimate.
+
+The dashboard shows consumed calories, progress against the current daily
+calorie target, calories remaining (or above target), and protein,
+carbohydrate, fat, and fiber totals. Logging remains available without a
+current calorie plan. The progress bar stops at its maximum while the text
+continues to show the actual amount and percentage.
+
+### Dates, edits, and assumptions
+
+**Diary date** starts at today's date in the browser's local timezone. The
+browser refreshes that date after local midnight or when returning to the
+window. A deliberately selected earlier date stays selected. The API requires
+an explicit calendar date instead of inferring a day from a UTC timestamp.
+Travel or a later timezone change does not move existing entries to another
+date. Use **Today** to return to the current local day.
+
+**Edit entry** changes the description, serving multiplier, or calendar date.
+A changed description requests a fresh Groq estimate before saving its reference.
+Changing just servings or date reuses the existing estimate and spends no AI
+quota. Each entry retains the estimate's serving and cooking notes.
+**Delete entry** removes it from the day's totals. Refreshing or signing back
+in restores the saved diary; drafts are kept only in memory.
+
+Historical entries are compared with the **current valid plan**. This version
+does not store historical target snapshots. A changed profile or expired plan
+hides targets until a current plan is created, without removing food entries.
+Calories are scaled with decimal arithmetic and rounded to whole kcal, and
+nutrient grams to one decimal. Daily totals add the displayed entry amounts.
+
+### API and persistence
+
+Apply the new migration using the existing database configuration:
+
+```bash
+source backend/.venv/bin/activate
+python -m alembic -c backend/alembic.ini upgrade head
+python -m alembic -c backend/alembic.ini check
+python -m alembic -c backend/alembic.ini current
+```
+
+The head is `0006_diary_entries`. No new dependencies or environment variables
+are needed. Existing Render startup migrations apply it during deployment.
+
+| Endpoint | Request and behavior |
+| --- | --- |
+| `GET /api/diary?date=YYYY-MM-DD` | Returns owned entries, scaled totals, current targets, remaining calories, and progress for the requested date. |
+| `POST /api/diary/entries` | Send `id` (UUIDv4), `food_estimate_id`, `entry_date`, and `servings`. New entry: `201`; a replay of the same save: `200`. |
+| `PUT /api/diary/entries/{id}` | Send `food_estimate_id`, `entry_date`, `servings`, and the last read `version`. Replaces entry details and returns its current version. |
+| `DELETE /api/diary/entries/{id}?version=N` | Removes the owned entry from the diary. A repeated delete also returns `204`. |
+
+All endpoints use the existing session cookie and `Cache-Control: no-store`.
+Mutations require the existing CSRF header and trusted origin. Account IDs
+and nutrition totals are derived on the server. A composite foreign key
+prevents an entry from referencing another account's estimate. Servings accept
+0.01–20 with at most two decimal places.
+
+A save creates one UUID per intentional addition and keeps that identifier
+across uncertain retries, preventing duplicate meals after a lost response.
+Intentionally repeated foods receive new identifiers. Updates use a version
+check to reject stale changes from another tab, while replaying an already
+applied update is safe. Deletion retains an internal tombstone so a delayed
+create retry cannot bring the entry back. Deleted entries are excluded from
+all diary reads and totals. Deleting the account cascades to its diary rows.
+
+Automated tests cover CRUD, date isolation, totals and rounding, private
+ownership, database constraints, repeated saves/deletes, stale edits,
+local midnight rollover, and cancellation of late replies after navigation
+or logout. Groq responses remain mocked in tests.
+
 
 ## Checks
 

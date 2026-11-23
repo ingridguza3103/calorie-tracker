@@ -66,6 +66,7 @@ function PlanResult({ plan }: Readonly<{ plan: CaloriePlan }>) {
 
 type PlanPanelProps = Readonly<{
   profile: Profile; onEdit: () => void; onSessionExpired: () => void
+  onPlanChanged?: () => void
 }>
 
 export function PlanPanel(props: PlanPanelProps) {
@@ -73,7 +74,7 @@ export function PlanPanel(props: PlanPanelProps) {
   return <PlanPanelContent key={JSON.stringify(props.profile)} {...props} />
 }
 
-function PlanPanelContent({ profile, onEdit, onSessionExpired }: PlanPanelProps) {
+function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged }: PlanPanelProps) {
   const [state, setState] = useState<PlanState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const active = useRef<AbortController | null>(null)
@@ -97,7 +98,10 @@ function PlanPanelContent({ profile, onEdit, onSessionExpired }: PlanPanelProps)
     setState({ status: 'creating' })
     try {
       const plan = await createPlan(controller.signal)
-      if (!controller.signal.aborted) setState({ status: 'ready', plan })
+      if (!controller.signal.aborted) {
+        setState({ status: 'ready', plan })
+        onPlanChanged?.()
+      }
     } catch (error) {
       if (controller.signal.aborted) return
       if (error instanceof SessionExpiredError) onSessionExpired()

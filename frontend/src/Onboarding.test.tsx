@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { diaryDay } from './test/diaryFixtures'
 import { goalLabels } from './profiles'
 import type { Goal, Profile, ProfileInput } from './profiles'
 
@@ -74,6 +75,7 @@ beforeEach(() => {
   saved = null
   localStorage.clear()
   fetchMock.mockReset().mockImplementation(async (url, options) => {
+    if (String(url).startsWith('/api/diary?')) return json(diaryDay(new URL(String(url), 'http://local.test').searchParams.get('date')!))
     if (url === '/api/plan') return json({}, 404)
     if (url === '/api/auth/me') return json(person)
     if (url === '/api/auth/logout') return new Response(null, { status: 204 })
