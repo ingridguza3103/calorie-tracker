@@ -43,7 +43,9 @@ http://127.0.0.1:8001/docs for the API documentation.
 Alembic uses the same connection settings as the application. The initial
 migration creates `users` with a unique, case-sensitive username, a password
 hash field, and a creation timestamp. A second migration adds revocable login
-sessions in the same PostgreSQL database.
+sessions in the same PostgreSQL database. The third migration adds one profile
+per account, including activity information and weight goals. Existing accounts
+can continue signing in before creating a profile.
 
 After editing the SQLAlchemy models, generate and review a migration:
 
@@ -81,6 +83,72 @@ The interface uses hot pink `#FF69B4`, white `#FCFFFF`, and charcoal `#3C4142`.
 The theme button swaps the background and text colors; pink remains the accent.
 The browser remembers the selected theme. Only this appearance preference is
 stored in localStorage.
+
+## Profiles and weight goals
+
+The profile API uses the existing login cookie. Each account can read and replace
+only its own profile; the server takes the account ID from the session. Profile
+responses use `Cache-Control: no-store`.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/profile` | Returns the current profile, or `404` if none has been saved. |
+| `PUT /api/profile` | Creates a profile (`201`) or replaces it (`200`). |
+
+`PUT` requires `X-CSRF-Protection: 1` and a trusted origin when an Origin header
+is present. In `/docs`, sign in through the account endpoint first and enter `1`
+in the profile endpoint's CSRF header field. Use the same hostname as the frontend
+when reusing a browser login cookie.
+
+Send the complete profile on every `PUT`. Partial updates and unknown body fields
+(including `user_id`) are rejected. Height uses centimetres and weights use
+kilograms. This first version accepts adult profiles, with age 18–120. Supported
+goals are `gain`, `lose`, and `maintain`; gender values are `female`, `male`,
+`other`, and `prefer_not_to_say`.
+
+A maintenance profile looks like this:
+
+```json
+{
+  "goal": "maintain",
+  "age": 30,
+  "height_cm": 175.5,
+  "current_weight_kg": 75,
+  "gender": "female",
+  "activity_description": "Gym twice a week and regular walks.",
+  "gym_sessions_per_week": 2,
+  "steps_per_day": 6000
+}
+```
+
+For `gain` or `lose`, also supply `target_weight_kg` and `target_date` in
+`YYYY-MM-DD` format. The target must be above or below the current weight to match
+the goal, and the date must be later than today's UTC date when saving. For
+`maintain`, omit both target fields or send `null`; replacing a weight-change
+profile this way clears its previous target and deadline. Saved profiles remain
+readable after their deadlines pass.
+
+Activity descriptions are trimmed and must contain 1–2,000 characters. Input
+limits are 50–300 cm for height, 20–500 kg for weights, 0–21 gym sessions per
+week, and 0–100,000 steps per day. Age, gym frequency, and steps must be whole
+numbers. These bounds check input shape; calorie targets and whether a goal's
+timeline is realistic will be calculated in a later feature.
+
+After signing in, new accounts see a responsive onboarding wizard: goal, body
+and weekly activity details, then target weight and date. Maintenance goals use
+only the first two steps. Inline checks match the API's input limits, and the
+wizard keeps entered values when moving back and forth. A failed save preserves
+the draft so it can be corrected or retried.
+
+Successful saves show a profile summary. Returning users load their saved
+profile from the API and can choose **Edit profile** to change it; **Cancel**
+discards those edits. Unsaved drafts stay in memory and are discarded on reload
+or logout. Profile data is not stored in localStorage. An expired login session
+returns the user to the login form.
+
+The wizard supports keyboard controls and the existing light/dark theme. On
+phone screens, goal cards stack and fields resize to the available width. AI
+calorie calculations and timeline-feasibility checks are later features.
 
 ## Checks
 

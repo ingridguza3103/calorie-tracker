@@ -7,6 +7,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from app.database import engine
 from app.auth import router as auth_router
+from app.profiles import router as profile_router
 
 app = FastAPI(
     title="Calorie Tracker API",
@@ -14,14 +15,15 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(profile_router)
 
 
 @app.middleware("http")
-async def prevent_auth_caching(
+async def prevent_private_caching(
     request: Request, call_next: RequestResponseEndpoint,
 ) -> Response:
     response = await call_next(request)
-    if request.url.path.startswith("/api/auth/"):
+    if request.url.path.startswith(("/api/auth/", "/api/profile")):
         response.headers["Cache-Control"] = "no-store"
     return response
 

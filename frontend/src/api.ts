@@ -7,7 +7,7 @@ export type AuthAction = 'login' | 'register'
 
 export class AccountError extends Error {}
 
-function requestSignal(signal?: AbortSignal): AbortSignal {
+export function requestSignal(signal?: AbortSignal): AbortSignal {
   const timeout = AbortSignal.timeout(10_000)
   return signal ? AbortSignal.any([signal, timeout]) : timeout
 }
