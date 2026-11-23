@@ -49,6 +49,7 @@ hash field, and a creation timestamp. A second migration adds revocable login
 sessions in the same PostgreSQL database. The third migration adds one profile
 per account, including activity information and weight goals. Existing accounts
 can continue signing in before creating a profile.
+A fourth migration adds one saved calorie and nutrient plan per profile.
 
 After editing the SQLAlchemy models, generate and review a migration:
 
@@ -102,8 +103,8 @@ python -m alembic -c backend/alembic.ini check
 python -m alembic -c backend/alembic.ini current
 ```
 
-The final command should show `0003_user_profiles (head)`. Alembic creates the
-existing users, login sessions, and profile tables in Neon. Existing Docker
+The final command should show `0004_nutrition_plans (head)`. Alembic creates the
+users, login sessions, profiles, and saved-plan tables in Neon. Existing Docker
 records require a separate data import; schema migrations do not copy them.
 You can register a fresh account when testing the Neon-backed application.
 
@@ -240,7 +241,7 @@ Activity descriptions are trimmed and must contain 1–2,000 characters. Input
 limits are 50–300 cm for height, 20–500 kg for weights, 0–21 gym sessions per
 week, and 0–100,000 steps per day. Age, gym frequency, and steps must be whole
 numbers. These bounds check input shape; calorie targets and whether a goal's
-timeline is realistic will be calculated in a later feature.
+timeline fits the automatic planner's limits are checked when creating a plan.
 
 After signing in, new accounts see a responsive onboarding wizard: goal, body
 and weekly activity details, then target weight and date. Maintenance goals use
@@ -256,9 +257,8 @@ returns the user to the login form.
 
 The wizard supports keyboard controls and the existing light/dark theme. On
 phone screens, goal cards stack and fields resize to the available width.
-The backend maintenance endpoint below is available for explicit API testing.
-The results screen, calorie targets, macros, and timeline-feasibility checks
-come in the next feature.
+After saving a profile, choose **Create my plan** to calculate and save targets.
+Returning users load their existing plan without another Groq request.
 
 ## Groq maintenance estimates
 
@@ -335,8 +335,8 @@ measurements. The model considers the whole week and is instructed to explain
 conflicts or missing activity detail instead of inventing exercise duration.
 The backend rejects invalid levels, additional fields, excessive text, refusals,
 and truncated completions, even when the upstream API reports success.
-This step returns estimates on demand; it does not persist a calorie plan or
-accept a weight-change timeline. Those belong to the next feature.
+This standalone maintenance endpoint returns an estimate without saving a plan.
+The plan endpoint below adds timeline validation, nutrients, and persistence.
 
 ### Timeout and quota behavior
 
@@ -370,6 +370,97 @@ References: [Groq structured outputs](https://console.groq.com/docs/structured-o
 [Groq rate limits](https://console.groq.com/docs/rate-limits),
 [Groq errors](https://console.groq.com/docs/errors), and
 [Mifflin-St Jeor equation](https://pubmed.ncbi.nlm.nih.gov/2305711/).
+
+## Calorie and nutrient plans
+
+The signed-in dashboard shows estimated maintenance, a daily calorie adjustment,
+the resulting intake target, protein/carbohydrate/fat grams, and fiber. The layout
+uses four nutrient cards on wider screens and two columns on phones, in the
+existing pink/white/charcoal theme. Expand **How this was estimated** to see the
+activity interpretation and calculation assumptions.
+
+### Apply the new migration
+
+Keep your working `.env` and Groq/Neon settings. From the repository root:
+
+```bash
+source backend/.venv/bin/activate
+python -m alembic -c backend/alembic.ini upgrade head
+python -m alembic -c backend/alembic.ini check
+```
+
+The new revision is `0004_nutrition_plans`. It adds a table without changing
+existing accounts or profiles. Render's existing startup script applies this
+migration on deploy. No new packages, secrets, or configuration are required.
+
+### API and persistence
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/plan` | Return the current account's saved plan; `404` if absent, stale, or past its target date. No Groq call. |
+| `POST /api/plan` | Send `{}` with the login cookie and `X-CSRF-Protection: 1`. Validate, calculate, and save (`201`), or reuse a current plan (`200`). |
+
+Both endpoints require a saved profile and use `Cache-Control: no-store`.
+Clients cannot supply an account ID, maintenance calories, macros, or a model.
+The server stores one plan per account, bound to a fingerprint of its profile
+values. Changing those values invalidates the old plan; saving identical values
+does not. Expired target dates require a profile update. Logout clears the
+display and cancels pending browser requests. No profile/plan data is put in
+localStorage.
+
+Plan creation shares the maintenance endpoint's Groq client, timeouts, response
+validation, and rate limits. A saved plan can still be read if Groq is unavailable.
+Saving a profile, refreshing, and logging back in do not automatically request
+another estimate. Concurrent saves are serialized on the profile row, and an
+edit while Groq is responding prevents the old snapshot from being saved.
+
+### Automatic-plan limits
+
+These are conservative **application policies**, not a medical assessment or a
+promise that a particular goal will be reached. A rejected goal returns `422`
+with an explanation, the relevant field, and an optional suggested target date.
+The interface offers **Adjust goal** to edit the saved details. Structurally
+valid profiles may be saved as drafts even when their goal cannot produce a plan.
+
+| Check | Policy |
+| --- | --- |
+| Target date | Future UTC date within 730 days; use intermediate goals for longer periods. |
+| Weekly loss | At most the smaller of 0.9 kg or 1% of current weight. |
+| Weekly gain | At most the smaller of 0.5 kg or 0.5% of current weight. |
+| Daily deficit/surplus | At most the smaller of 500 kcal or 20% of estimated maintenance. |
+| Daily intake floor | 1,200 kcal for the existing female equation choice; 1,500 kcal for the other choices. |
+| Loss target | Target BMI must be at least 18.5. This is a screening guard, not a diagnosis. |
+
+Date, weight, and weekly-rate checks happen before spending Groq quota. After
+activity estimation, calorie/floor checks may require a further extension.
+Suggested dates are estimates from the failed check, not automatic approvals.
+If no suitable suggestion fits the supported period, choose a smaller goal.
+The application rejects an excessive change instead of silently clamping it and
+pretending the requested date remains achievable.
+
+For weight changes, the initial daily adjustment is
+`(target_weight_kg - current_weight_kg) * 7700 / days`. It is rounded toward zero
+so rounding never increases the requested restriction or surplus. Maintenance
+goals use a zero adjustment and no deadline. The 7,700 kcal/kg approximation
+does not model metabolic adaptation, water changes, or distinguish fat from
+muscle; it cannot guarantee a deadline. Targets should be reviewed as actual
+weight and activity change.
+
+Protein starts at 1.6 g/kg of current weight, bounded to 10-25% of daily calories.
+Fat uses 30% of calories, and carbohydrates receive the remainder. Calculations
+use 4 kcal/g for protein/carbohydrate and 9 kcal/g for fat. Gram values are
+rounded to one decimal, so their energy total may differ by less than one kcal.
+Fiber uses 14 g per 1,000 kcal, with a 25 g app minimum; fiber is part of the
+carbohydrate target rather than an extra calorie allocation.
+
+Background: [CDC gradual weight loss](https://www.cdc.gov/healthy-weight-growth/losing-weight/index.html),
+[NHS gradual weight gain](https://www.nhs.uk/live-well/healthy-weight/managing-your-weight/healthy-ways-to-gain-weight/),
+[NHLBI dietary strategies](https://www.nhlbi.nih.gov/sites/default/files/media/docs/obesity-evidence-review.pdf),
+[ISSN protein position stand](https://pmc.ncbi.nlm.nih.gov/articles/PMC5477153/),
+[Dietary Guidelines nutrient tables](https://www.dietaryguidelines.gov/sites/default/files/2020-12/Dietary_Guidelines_for_Americans_2020-2025.pdf),
+and [NIDDK on the limits of linear calorie rules](https://www.niddk.nih.gov/health-information/professionals/diabetes-discoveries-practice/nih-body-weight-planner).
+These sources inform the defaults; the exact caps and implementation above are
+app choices rather than claims that every value is a universal clinical limit.
 
 ## Checks
 

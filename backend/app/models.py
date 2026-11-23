@@ -12,6 +12,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
 
@@ -99,3 +100,16 @@ class UserProfile(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
     )
+
+
+class NutritionPlan(Base):
+    __tablename__ = "nutrition_plans"
+    __table_args__ = (
+        CheckConstraint("jsonb_typeof(payload) = 'object'", name="ck_nutrition_plans_payload"),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"), primary_key=True,
+    )
+    profile_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)

@@ -103,10 +103,15 @@ async def estimate_maintenance(
     groq: Annotated[GroqClient, Depends(get_groq_client)],
 ) -> MaintenanceEstimate:
     """Send {} and X-CSRF-Protection: 1. This explicitly calls Groq; it does not save a target."""
+    return await estimate_for_profile(profile, user.id, groq)
+
+
+async def estimate_for_profile(profile: ProfileRead, user_id: int, groq: GroqClient) -> MaintenanceEstimate:
+    """Shared by explicit maintenance estimates and saved calorie plans."""
     resting, basis, assumptions = resting_energy(profile)
     # No configured key means no provider attempt and no quota consumed.
     if groq.settings.api_key.get_secret_value():
-        estimate_limiter.check(str(user.id))
+        estimate_limiter.check(str(user_id))
         provider_limiter.check("maintenance")
     activity_input = ActivityInput.model_validate({
         "activity_description": profile.activity_description,
