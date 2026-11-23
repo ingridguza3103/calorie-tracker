@@ -74,6 +74,7 @@ beforeEach(() => {
   saved = null
   localStorage.clear()
   fetchMock.mockReset().mockImplementation(async (url, options) => {
+    if (url === '/api/plan') return json({}, 404)
     if (url === '/api/auth/me') return json(person)
     if (url === '/api/auth/logout') return new Response(null, { status: 204 })
     if (options?.method === 'PUT') {
@@ -90,6 +91,31 @@ beforeEach(() => {
 })
 
 describe('Onboarding', () => {
+  it('opens the saved goal editor from a rejected calorie plan', async () => {
+    saved = { ...stored, goal: 'lose', target_weight_kg: 70, target_date: futureDate(7) }
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((url, options) => {
+      if (url === '/api/plan' && options?.method === 'POST')
+        return Promise.resolve(json({ detail: {
+          code: 'timeline_too_short', message: 'This goal needs more time.',
+          suggested_target_date: futureDate(150),
+        } }, 422))
+      return original(url, options)
+    })
+    render(<App />)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Create my plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Adjust goal' }))
+    expect(screen.getByRole('radio', { name: /^Lose weight/ })).toBeChecked()
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    expect(screen.getByLabelText('Target weight (kg)')).toHaveValue(70)
+    fireEvent.change(screen.getByLabelText('Target date'), { target: { value: futureDate(150) } })
+    await user.click(screen.getByRole('button', { name: /save profile/i }))
+    expect(await screen.findByRole('button', { name: 'Create my plan' })).toBeEnabled()
+    expect(saved?.target_date).toBe(futureDate(150))
+  })
+
   it('requires a goal before continuing and supports native radio keyboard navigation', async () => {
     render(<App />)
     const user = userEvent.setup()

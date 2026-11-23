@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { accountErrorMessage } from './api'
 import { OnboardingWizard } from './OnboardingWizard'
 import { ConnectionNotice } from './ConnectionNotice'
+import { PlanPanel } from './PlanPanel'
 import {
   genderLabels,
   goalLabels,
@@ -74,7 +75,7 @@ function ProfileSummary({
       <h3 className="profile-activity-heading">Your usual week</h3>
       <p className="profile-activity">{profile.activity_description}</p>
       <p className="profile-help">
-        Daily calorie targets and food logging are coming next.
+        Update these details when your weight, goal or usual activity changes.
       </p>
       <button type="button" className="button-secondary" onClick={onEdit}>
         Edit profile
@@ -131,6 +132,11 @@ export function ProfilePanel({
     }
   }
 
+  function editProfile() {
+    setSaveError('')
+    setEditing(true)
+  }
+
   if (state.status === 'loading')
     return (
       <section className="profile-card" aria-live="polite">
@@ -159,13 +165,14 @@ export function ProfilePanel({
     )
   if (state.profile && !editing)
     return (
-      <ProfileSummary
-        profile={state.profile}
-        onEdit={() => {
-          setSaveError('')
-          setEditing(true)
-        }}
-      />
+      <div className="plan-workspace">
+        <PlanPanel
+          profile={state.profile}
+          onSessionExpired={onSessionExpired}
+          onEdit={editProfile}
+        />
+        <ProfileSummary profile={state.profile} onEdit={editProfile} />
+      </div>
     )
   return (
     <OnboardingWizard
