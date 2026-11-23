@@ -255,8 +255,121 @@ or logout. Profile data is not stored in localStorage. An expired login session
 returns the user to the login form.
 
 The wizard supports keyboard controls and the existing light/dark theme. On
-phone screens, goal cards stack and fields resize to the available width. AI
-calorie calculations and timeline-feasibility checks are later features.
+phone screens, goal cards stack and fields resize to the available width.
+The backend maintenance endpoint below is available for explicit API testing.
+The results screen, calorie targets, macros, and timeline-feasibility checks
+come in the next feature.
+
+## Groq maintenance estimates
+
+Groq interprets the saved weekly activity description, gym frequency, and step
+count. Python calculates estimated resting energy using the Mifflin-St Jeor
+equation, then multiplies the unrounded result by a fixed activity factor and
+rounds once to a whole kcal/day value. The response includes the model, activity
+interpretation, assumptions, formula basis, profile timestamp, and estimate time.
+Weight goals and deadlines do not influence maintenance calories.
+
+### Configure Groq
+
+1. Sign in to [Groq Console](https://console.groq.com) on the Free plan.
+2. Create an API key at [API Keys](https://console.groq.com/keys).
+3. Add the following to your existing private root `.env`, keeping the working
+   database configuration. Replace the placeholder with your own Groq key:
+
+```dotenv
+GROQ_API_KEY=replace_with_your_private_groq_key
+GROQ_MODEL=openai/gpt-oss-20b
+GROQ_TIMEOUT_SECONDS=20
+```
+
+Only the key is required; the model and timeout above are built-in defaults.
+The timeout accepts 5-60 seconds. A different model must support Groq's strict
+`json_schema` structured-output mode; `openai/gpt-oss-120b` is another supported
+choice. Check availability and your account's free quota before switching.
+There is no automatic fallback to another model or paid plan.
+
+Restart the local API after configuration changes. On Render, add
+`GROQ_API_KEY` under the existing calorie-tracker service's **Environment** and
+save/redeploy. Set `GROQ_MODEL` or `GROQ_TIMEOUT_SECONDS` there only if overriding
+the defaults. Keep the direct Neon `DATABASE_URL` as it is. The frontend needs
+no key or `VITE_` variable. `.env.example` need not change for this feature.
+
+Only the activity description, gym frequency, and daily steps are sent to
+Groq. Account identifiers, cookies, passwords, age, height, weight, gender,
+target weights, and deadlines are not sent. The raw provider response and error
+body are not logged or returned by the application.
+
+### Test the authenticated endpoint
+
+`POST /api/maintenance/estimate` requires the existing login cookie,
+`X-CSRF-Protection: 1`, and a saved profile. Send the empty JSON body `{}`.
+The server reads the account from the session and rejects body overrides such
+as `user_id`, `model`, or replacement profile fields. Responses are not cached.
+
+1. Start the API and frontend as usual. Log in and finish onboarding.
+2. Open http://127.0.0.1:8001/docs using the same hostname as the frontend.
+   Browser cookies are shared across ports on the same host.
+3. Expand **Maintenance → POST /api/maintenance/estimate**, choose **Try it out**,
+   enter `1` for `X-CSRF-Protection`, leave the request body as `{}`, and execute.
+4. Expect `200`, a whole-number `maintenance_calories`, and the explanation.
+   Repeated tests consume your Groq quota. Nothing calls Groq automatically
+   during login, onboarding saves, health checks, or CI.
+
+The maintenance equation is `10 * weight_kg + 6.25 * height_cm - 5 * age + c`,
+where `c` is `-161` for female or `5` for male. The existing gender selection is
+used as the sex-based equation input, and this assumption is returned explicitly.
+For `other` or `prefer_not_to_say`, the app uses the midpoint coefficient `-78`
+and labels it as an app approximation, not a separately validated equation.
+Resting estimates below one kcal/day from inconsistent measurements are rejected.
+
+| AI activity level | App activity factor |
+| --- | --- |
+| `sedentary` | 1.2 |
+| `light` | 1.375 |
+| `moderate` | 1.55 |
+| `active` | 1.725 |
+| `very_active` | 1.9 |
+
+These factors and AI classifications are approximate starting estimates, not
+measurements. The model considers the whole week and is instructed to explain
+conflicts or missing activity detail instead of inventing exercise duration.
+The backend rejects invalid levels, additional fields, excessive text, refusals,
+and truncated completions, even when the upstream API reports success.
+This step returns estimates on demand; it does not persist a calorie plan or
+accept a weight-change timeline. Those belong to the next feature.
+
+### Timeout and quota behavior
+
+| Status | Meaning |
+| --- | --- |
+| `401` | Log in before requesting an estimate. |
+| `403` | Missing CSRF header or untrusted browser origin. |
+| `409` | Finish and save onboarding first. |
+| `422` | Invalid request body or inconsistent profile measurements. |
+| `429` | Local request limit or Groq quota exhausted; respect `Retry-After`. |
+| `502` | Malformed, refused, or incomplete AI response. |
+| `503` | Missing key, invalid model/configuration, or unavailable provider. |
+| `504` | The configured overall AI request deadline expired. |
+
+The server makes one provider attempt per accepted request with a 2,048-token
+completion cap. It follows no redirects and performs no automatic retries.
+Requests are limited to two per account per minute and ten maintenance provider
+attempts per minute per server process. These bounds protect the current
+single-worker deployment; additional workers/instances will need shared limits.
+Groq quotas apply across its organization, so check your actual account limits
+before manually retrying. Provider quota responses preserve a sanitized
+`Retry-After` duration; unexpected error bodies never reach the browser.
+
+The app can start and pass health checks without a Groq key. Only the estimate
+endpoint then returns a configuration error. No database migration is needed.
+Automated tests use mocked provider responses and never require a Groq secret.
+The existing hash-locked CI install already contains HTTPX; its runtime
+requirements now explicitly include HTTPX and its dependencies.
+
+References: [Groq structured outputs](https://console.groq.com/docs/structured-outputs),
+[Groq rate limits](https://console.groq.com/docs/rate-limits),
+[Groq errors](https://console.groq.com/docs/errors), and
+[Mifflin-St Jeor equation](https://pubmed.ncbi.nlm.nih.gov/2305711/).
 
 ## Checks
 
