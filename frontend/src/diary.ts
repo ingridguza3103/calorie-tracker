@@ -94,7 +94,15 @@ async function readEntry(response: Response): Promise<DiaryEntry> {
 const headers = { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' }
 
 export async function loadDiary(date: string, signal: AbortSignal): Promise<DiaryDay> {
-  const response = await apiRequest('/api/diary?date=' + encodeURIComponent(date), { signal })
+  if (!isCalendarDate(date)) throw new AccountError('Choose a valid diary date.')
+  // Rebuild the query from calendar numbers; raw form text never becomes a URL.
+  const day = new Date(date + 'T00:00:00Z')
+  const canonical = [
+    String(day.getUTCFullYear()).padStart(4, '0'),
+    String(day.getUTCMonth() + 1).padStart(2, '0'),
+    String(day.getUTCDate()).padStart(2, '0'),
+  ].join('-')
+  const response = await apiRequest('/api/diary', { signal }, { date: canonical })
   await requireSuccess(response)
   const value: unknown = await response.json().catch(() => null)
   if (!validDay(value, date)) throw new AccountError('We could not read your diary. Please reload it.')
@@ -111,9 +119,9 @@ export async function updateDiaryEntry(id: string, data: UpdatedEntry, signal: A
   }))
 }
 export async function deleteDiaryEntry(entry: DiaryEntry, signal: AbortSignal): Promise<void> {
-  await requireSuccess(await apiRequest('/api/diary/entries/' + entry.id + '?version=' + entry.version, {
+  await requireSuccess(await apiRequest('/api/diary/entries/' + entry.id, {
     method: 'DELETE', signal, headers,
-  }))
+  }, { version: String(entry.version) }))
 }
 export function parseServings(value: string): number | null {
   if (!/^\d+(?:\.\d{1,2})?$/.test(value)) return null

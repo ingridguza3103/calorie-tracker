@@ -1,3 +1,4 @@
+import { stubApiFetch } from './test/mockApiFetch'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
@@ -48,7 +49,7 @@ beforeEach(() => {
     }
     return json({}, 404)
   })
-  vi.stubGlobal('fetch', fetchMock)
+  stubApiFetch(fetchMock)
 })
 function panel() { return render(<DiaryWorkspace revision={0} onSessionExpired={onSessionExpired} />) }
 async function ready() { return screen.findByRole('heading', { name: 'Food diary.' }) }

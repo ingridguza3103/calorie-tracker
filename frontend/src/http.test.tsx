@@ -138,6 +138,75 @@ it('rejects paths outside the application API', async () => {
   expect(fetchMock).not.toHaveBeenCalled()
 })
 
+it.each([
+  'https://evil.example/api/profile', '//evil.example/api/profile',
+  '/api/../auth/logout', '/api/%2e%2e/auth/logout', '/api/profile/../auth/logout',
+  '/api/profile/../../outside', '/api/profile?redirect=https://evil.example',
+  '/api/profile#fragment', '/api/unknown', '/api/profile/extra',
+  '/api/diary?date=2026-11-23', '/api/diary/entries/../../auth/logout',
+  '/api/diary/entries/daab1898-b871-4895-b395-98838fd82525%2f..',
+  '/api/diary/entries/not-a-uuid', '/api\\profile', ' /api/profile', '/api/profile\n',
+  '/api/diary/entries/daab1898-b871-4895-b395-98838fd82525\n',
+])('rejects an unapproved or disguised endpoint before fetching: %s', async (path) => {
+  await expect(apiRequest(path)).rejects.toThrow('Invalid API path')
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['/api/profile', { date: '2026-11-23' }],
+  ['/api/diary', { redirect: 'https://evil.example' }],
+  ['/api/diary', { date: '2026-11-23', version: '1' }],
+])('rejects unexpected query keys on %s', async (path, query) => {
+  await expect(apiRequest(path as string, {}, query as Record<string, string>)).rejects.toThrow('Invalid API query')
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+
+it('keeps delimiter-like query text inside one parameter on the fixed same-origin endpoint', async () => {
+  const supplied = '2026-11-23&redirect=https://evil.example/api#fragment'
+  fetchMock.mockResolvedValueOnce(json())
+  await apiRequest('/api/diary', {}, { date: supplied })
+  const target = new URL(String(fetchMock.mock.calls[0][0]))
+  expect(target.origin).toBe(window.location.origin)
+  expect(target.pathname).toBe('/api/diary')
+  expect([...target.searchParams.keys()]).toEqual(['date'])
+  expect(target.searchParams.get('date')).toBe(supplied)
+  expect(target.hash).toBe('')
+})
+
+it('permits only a UUIDv4 entry path and keeps the deletion version in the query', async () => {
+  fetchMock.mockResolvedValueOnce(json())
+  await apiRequest('/api/diary/entries/daab1898-b871-4895-b395-98838fd82525', { method: 'DELETE' }, { version: '3' })
+  expect(fetchMock).toHaveBeenCalledWith(
+    window.location.origin + '/api/diary/entries/daab1898-b871-4895-b395-98838fd82525?version=3',
+    expect.objectContaining({ method: 'DELETE' }),
+  )
+})
+
+it('uses the page origin even when an HTML base points to another origin', async () => {
+  const base = document.createElement('base')
+  base.href = 'https://evil.example/elsewhere/'
+  document.head.append(base)
+  fetchMock.mockResolvedValueOnce(json())
+  try {
+    await apiRequest('/api/profile')
+    expect(fetchMock).toHaveBeenCalledWith(
+      window.location.origin + '/api/profile', expect.anything(),
+    )
+  } finally {
+    base.remove()
+  }
+})
+
+it('pins credentials, mode, redirects and caching even if request options try to override them', async () => {
+  fetchMock.mockResolvedValueOnce(json())
+  await apiRequest('/api/profile', {
+    credentials: 'include', mode: 'cors', redirect: 'follow', cache: 'force-cache',
+  })
+  expect(fetchMock).toHaveBeenCalledWith(window.location.origin + '/api/profile', expect.objectContaining({
+    credentials: 'same-origin', mode: 'same-origin', redirect: 'error', cache: 'no-store',
+  }))
+})
+
 it('shows a waiting message for a slow operation and clears its timer on unmount', async () => {
   const first = render(<ConnectionNotice />)
   expect(screen.queryByRole('status')).not.toBeInTheDocument()

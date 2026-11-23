@@ -1,3 +1,4 @@
+import { stubApiFetch } from './test/mockApiFetch'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -38,7 +39,7 @@ beforeEach(() => {
   localStorage.clear()
   onSessionExpired.mockReset()
   fetchMock.mockReset().mockImplementation(async () => json(estimate, 201))
-  vi.stubGlobal('fetch', fetchMock)
+  stubApiFetch(fetchMock)
 })
 
 it('makes no automatic AI request when displaying the food form', () => {

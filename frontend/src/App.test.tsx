@@ -1,3 +1,4 @@
+import { stubApiFetch } from './test/mockApiFetch'
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,7 +29,7 @@ beforeEach(() => {
   localStorage.clear()
   delete document.documentElement.dataset.theme
   fetchMock.mockReset().mockImplementation((input) => Promise.resolve(json({}, input === '/api/profile' ? 404 : 401)))
-  vi.stubGlobal('fetch', fetchMock)
+  stubApiFetch(fetchMock)
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }))
 })
 

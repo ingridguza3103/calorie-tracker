@@ -1,3 +1,4 @@
+import { stubApiFetch } from './test/mockApiFetch'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -50,7 +51,7 @@ beforeEach(() => {
   fetchMock.mockReset().mockResolvedValue(json({}, 404))
   onEdit.mockReset()
   onSessionExpired.mockReset()
-  vi.stubGlobal('fetch', fetchMock)
+  stubApiFetch(fetchMock)
 })
 
 it('loads saved targets without asking Groq to generate another plan', async () => {

@@ -15,7 +15,7 @@ beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock) })
 it('loads an explicit date and sends private same-origin requests', async () => {
   fetchMock.mockResolvedValue(json(diaryDay(date, [saved])))
   expect(await loadDiary(date, signal())).toEqual(diaryDay(date, [saved]))
-  expect(fetchMock).toHaveBeenCalledWith('/api/diary?date=2026-11-23', expect.objectContaining({
+  expect(fetchMock).toHaveBeenCalledWith(window.location.origin + '/api/diary?date=2026-11-23', expect.objectContaining({
     credentials: 'same-origin', cache: 'no-store', mode: 'same-origin',
   }))
 })
@@ -32,7 +32,7 @@ it('adds and updates entries using their UUID and version, and verifies deletes'
   for (const [index, method, body] of [[0, 'POST', payload], [1, 'PUT', update]] as const)
     expect(fetchMock.mock.calls[index][1]).toMatchObject({ method, body: JSON.stringify(body),
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' } })
-  expect(fetchMock.mock.calls[2][0]).toBe('/api/diary/entries/' + saved.id + '?version=1')
+  expect(fetchMock.mock.calls[2][0]).toBe(window.location.origin + '/api/diary/entries/' + saved.id + '?version=1')
 })
 it.each([403, 404, 409, 422, 500])('surfaces HTTP %s without retrying mutations', async (status) => {
   fetchMock.mockResolvedValue(json({}, status))
@@ -77,4 +77,23 @@ it.each([null, { ...saved, servings: 21 }, { ...saved, version: 1.5 }])('rejects
 it.each([['0.01', 0.01], ['20', 20], ['1.25', 1.25], ['', null], ['0', null], ['20.01', null],
   ['-1', null], ['1.001', null], ['1e1', null], ['NaN', null], ['.5', null]])('parses servings %s', (value, expected) => {
   expect(parseServings(String(value))).toBe(expected)
+})
+
+it.each([
+  '', '2026-2-1', '2026-02-30', '2026-11-23T00:00:00Z',
+  'https://evil.example', '//evil.example', '../auth/logout',
+  '2026-11-23&date=2026-11-24', '2026-11-23#fragment', '2026-11-23\n',
+])('rejects an invalid or forged diary date before any request: %s', async (value) => {
+  await expect(loadDiary(value, signal())).rejects.toThrow('valid diary date')
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+it.each(['2026-01-02', '2024-02-29'])('serializes the validated calendar date %s as a query value', async (value) => {
+  fetchMock.mockResolvedValueOnce(json(diaryDay(value)))
+  await loadDiary(value, signal())
+  expect(fetchMock).toHaveBeenCalledWith(window.location.origin + '/api/diary?date=' + value, expect.anything())
+})
+it('rejects forged entry paths for updates and deletes before any request', async () => {
+  await expect(updateDiaryEntry('../auth/logout', update, signal())).rejects.toThrow('Invalid API path')
+  await expect(deleteDiaryEntry({ ...saved, id: '../auth/logout' }, signal())).rejects.toThrow('Invalid API path')
+  expect(fetchMock).not.toHaveBeenCalled()
 })
