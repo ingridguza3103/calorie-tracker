@@ -1,4 +1,5 @@
-import { AccountError, requestSignal } from './api'
+import { AccountError } from './api'
+import { apiRequest } from './http'
 
 export const goalLabels = {
   gain: 'Gain weight',
@@ -91,11 +92,7 @@ async function readProfile(response: Response): Promise<Profile> {
 export async function loadProfile(
   signal: AbortSignal,
 ): Promise<Profile | null> {
-  const response = await fetch('/api/profile', {
-    credentials: 'same-origin',
-    cache: 'no-store',
-    signal: requestSignal(signal),
-  })
+  const response = await apiRequest('/api/profile', { signal })
   if (response.status === 404) return null
   return readProfile(response)
 }
@@ -104,11 +101,9 @@ export async function saveProfile(
   data: ProfileInput,
   signal: AbortSignal,
 ): Promise<Profile> {
-  const response = await fetch('/api/profile', {
+  const response = await apiRequest('/api/profile', {
     method: 'PUT',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    signal: requestSignal(signal),
+    signal,
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' },
     body: JSON.stringify(data),
   })

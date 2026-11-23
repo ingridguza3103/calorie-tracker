@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { accountErrorMessage, authenticate } from './api'
 import type { AuthAction, User } from './api'
+import { ConnectionNotice } from './ConnectionNotice'
 
 interface Props {
   onAuthenticated: (user: User) => void
@@ -160,6 +161,7 @@ export function AuthForm({ onAuthenticated }: Readonly<Props>) {
           <span aria-hidden="true">↗</span>
         </button>
       </form>
+      {busy && <ConnectionNotice />}
       <p className="account-note">A little consistency. A little more you.</p>
     </section>
   )

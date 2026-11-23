@@ -1,0 +1,15 @@
+.git
+.github
+**/.env
+**/.env.*
+**/.venv
+**/__pycache__
+**/node_modules
+**/dist
+**/coverage
+**/coverage.*
+**/.coverage*
+**/htmlcov
+**/.pytest_cache
+*.zip
+*.patch

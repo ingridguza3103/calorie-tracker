@@ -11,6 +11,8 @@ Run these commands from the repository root.
 For a fresh clone, copy `.env.example` to `.env` and replace its password
 placeholder with a private local password before starting PostgreSQL.
 An existing installation should keep its working `.env` and database password.
+For local development, only `CALORIE_DB_PASSWORD` is required; the other local
+settings have defaults. `.env.example` documents optional configuration.
 
 ```bash
 python3 -m venv backend/.venv
@@ -70,19 +72,16 @@ Docker Compose still uses `CALORIE_DB_PASSWORD` when starting the local service.
    Choose a region near your intended application host.
 2. Open **Connect** for the project and select the branch, compute, database,
    and role that the application should use.
-3. With **Connection pooling** enabled, copy the connection string into
+3. Turn **Connection pooling off** and copy the direct connection string into
    `DATABASE_URL` in your root `.env` file.
-4. Turn **Connection pooling** off and copy the direct connection string into
-   `DATABASE_URL_UNPOOLED`. Both strings must select the same endpoint and
-   database. The direct hostname does not include `-pooler`.
+4. Leave `DATABASE_URL_UNPOOLED` unset or blank. This single direct URL is used
+   by both the application and Alembic. Its hostname has no `-pooler` suffix.
 
-Keep your existing local settings in `.env`. Add the two Neon values alongside
-them, using the actual connection strings copied from the Console:
+Keep your existing local settings in `.env`. Add your actual copied Neon URL:
 
 ```dotenv
-# Examples only: replace these with your own copied connection strings.
-DATABASE_URL='postgresql://ROLE:PASSWORD@ep-YOUR-ENDPOINT-pooler.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
-DATABASE_URL_UNPOOLED='postgresql://ROLE:PASSWORD@ep-YOUR-ENDPOINT.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+# Example only: replace this with your own copied direct connection string.
+DATABASE_URL='postgresql://ROLE:PASSWORD@ep-YOUR-ENDPOINT.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
 ```
 
 Use the actual database name and hostname from Neon. Keep the password's URL
@@ -108,11 +107,11 @@ existing users, login sessions, and profile tables in Neon. Existing Docker
 records require a separate data import; schema migrations do not copy them.
 You can register a fresh account when testing the Neon-backed application.
 
-The app uses the pooled URL for requests; Alembic uses a separate direct engine
-with no persistent client connection pool. A pooled Neon URL requires
-`DATABASE_URL_UNPOOLED` before migrations can run. The configuration also
-rejects a direct URL targeting a different endpoint, database, or port. The
-migration role may differ from the application role.
+Alembic uses a direct engine with no persistent client connection pool. If you
+later choose a pooled application URL, set `DATABASE_URL` to that pooled URL and
+`DATABASE_URL_UNPOOLED` to the direct URL for the same endpoint and database.
+This two-URL setup is optional. A supplied migration URL must target the same
+endpoint, database, and port; its role may differ from the application role.
 
 Restart the API after changing database settings, then run the frontend as
 usual. `GET /api/ready` should return `{"status":"ready","database":"connected"}`.
@@ -179,9 +178,12 @@ origins. The frontend sends this header automatically. In the API documentation,
 enter `1` in that header field when trying account POST endpoints.
 
 Local defaults allow the frontend on port 5174 and API documentation on port
-8001, using either `127.0.0.1` or `localhost`. Before deployment, set
-`CALORIE_ALLOWED_ORIGINS` to the exact trusted HTTPS origins and set
-`CALORIE_COOKIE_SECURE=true`. Keep the API behind the frontend's `/api` path.
+8001, using either `127.0.0.1` or `localhost`. Render's `RENDER_EXTERNAL_URL`
+automatically selects the trusted origin and enables Secure cookies. For a
+custom domain, set `APP_ORIGIN` to its HTTPS origin. The optional existing
+`CALORIE_ALLOWED_ORIGINS` and `CALORIE_COOKIE_SECURE` overrides remain supported;
+an HTTPS origin cannot disable Secure cookies. Keep the API behind the
+frontend's `/api` path.
 Authentication currently allows ten attempts per client per minute, per server
 process. Multiple server workers or instances will need a shared rate limiter.
 
@@ -270,6 +272,83 @@ python scripts/check_coverage.py
 ```
 
 CI runs these checks and imports coverage into SonarQube Cloud. The local
-coverage script enforces at least 80% combined backend/frontend line coverage.
+coverage script enforces at least 80% combined backend/frontend line and branch coverage.
 Migration files are outside application coverage and remain available for
 static analysis.
+
+## Render deployment and CD
+
+The root `Dockerfile` builds React and packages its output with FastAPI in one
+image. `backend/start.sh` applies Alembic migrations and starts the production
+entry point on `0.0.0.0:$PORT` (default `10000`). One Uvicorn worker runs as a
+non-root user. Frontend HTML is revalidated so a new deploy can load its current
+bundled assets. Local Vite development still uses ports 5174 and 8001.
+
+### Create the Render service once
+
+1. Apply this change on your feature branch and open a pull request. Wait for
+   the checks, merge into `main`, and wait for the `main` CI run to pass.
+2. Open Render in the GitHub-connected account used for Budget Assistant.
+   Choose **New → Blueprint** and connect the `calorie-tracker` repository.
+   Use its `main` branch and root `render.yaml` file.
+3. Review the proposed **Free** Docker web service in **Frankfurt**.
+4. When prompted for `DATABASE_URL`, enter the **direct** Neon connection URL
+   from the calorie-tracker project. This is the only manually required secret.
+   The same URL is used by the app and startup migrations. The private local
+   `.env` is excluded from the Docker build.
+5. Create the Blueprint and wait for the initial deployment. Open the assigned
+   HTTPS `onrender.com` address, register an account, save a profile, and reload.
+
+The Blueprint sets `autoDeployTrigger: checksPass`. Confirm **Auto-Deploy →
+After CI Checks Pass** in the service settings. Future changes on `main` are
+automatically rebuilt and deployed after their GitHub checks pass. Connect the
+GitHub repository through Render's integration so Render can see those checks.
+The initial creation is performed after the commit's checks have already passed.
+
+CI builds the deployment image and starts it against the CI PostgreSQL service,
+then checks the React index, linked JS/CSS assets, API health, and database
+readiness. This is part of the same required CI job, alongside tests, the
+line-and-branch coverage gate, and the configured SonarQube quality gate.
+
+### Health and cold starts
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/api/health` | Render's frequent liveness probe; performs no database query. |
+| `/api/ready` | Explicitly checks database connectivity; use during verification. |
+
+Startup migrations check the database before the HTTP server starts. A
+frequent Render liveness probe does not continually wake the Neon database.
+
+Render Free services can sleep while idle. The browser allows up to 90 seconds
+per API operation and shows a waiting notice after five seconds. GET requests
+retry up to twice after transient server/network errors or a temporary HTML
+waking page, within that overall time limit. Login, registration, logout, and
+profile saves are never automatically repeated. Existing retry controls remain
+available after failure. Leaving the page or signing out cancels pending
+profile reads and saves.
+
+### Optional local production check
+
+With a working Neon `DATABASE_URL` in your private root `.env`:
+
+```bash
+docker build --tag calorie-tracker:local .
+docker run --rm --env-file .env \
+  --env APP_ORIGIN=http://127.0.0.1:10000 \
+  --publish 127.0.0.1:10000:10000 calorie-tracker:local
+```
+
+In another terminal, from the repository root:
+
+```bash
+python scripts/check_deployment.py http://127.0.0.1:10000
+```
+
+This local container uses the Neon URL. The existing Compose service remains
+available for the normal local development workflow.
+
+References: [Render deployments](https://render.com/docs/deploys),
+[Blueprints](https://render.com/docs/blueprint-spec),
+[health checks](https://render.com/docs/health-checks), and
+[free service behavior](https://render.com/docs/free).
