@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { PlanPanel } from './PlanPanel'
@@ -62,7 +62,9 @@ it('loads saved targets without asking Groq to generate another plan', async () 
   expect(within(result).getByText('Carbohydrates')).toBeInTheDocument()
   expect(within(result).getByText('Fat')).toBeInTheDocument()
   expect(within(result).getByText('Fiber')).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Your daily plan.' })).toHaveFocus()
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: 'Your daily plan.' })).toHaveFocus()
+  })
   await userEvent.setup().click(screen.getByText('How this was estimated'))
   expect(screen.getByText('Regular walking and gym.')).toBeVisible()
   expect(screen.getByText('No duration supplied.')).toBeVisible()

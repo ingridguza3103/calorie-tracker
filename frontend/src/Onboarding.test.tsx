@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -123,13 +123,15 @@ describe('Onboarding', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('highlighted fields')
     expect(screen.getByText('Choose a goal to continue.')).toBeInTheDocument()
     const gain = screen.getByRole('radio', { name: /^Gain weight/ })
-    expect(gain).toHaveFocus()
+    await waitFor(() => expect(gain).toHaveFocus())
     await user.keyboard('[Space][ArrowRight]')
     expect(screen.getByRole('radio', { name: /^Lose weight/ })).toBeChecked()
     await user.click(screen.getByRole('button', { name: /continue/i }))
-    expect(
-      screen.getByRole('heading', { name: 'Tell us about you.' }),
-    ).toHaveFocus()
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: 'Tell us about you.' }),
+      ).toHaveFocus()
+    })
   })
 
   it('saves a maintain goal in two steps without target fields or private browser storage', async () => {
@@ -221,7 +223,7 @@ describe('Onboarding', () => {
   it('shows inline errors, focuses the first invalid field, and accepts zero activity counts', async () => {
     const user = await start()
     await user.click(screen.getByRole('button', { name: /save profile/i }))
-    expect(screen.getByLabelText('Age (years)')).toHaveFocus()
+    await waitFor(() => expect(screen.getByLabelText('Age (years)')).toHaveFocus())
     expect(screen.getByLabelText('Age (years)')).toHaveAttribute(
       'aria-invalid',
       'true',
@@ -477,9 +479,16 @@ describe('Onboarding', () => {
       )
       render(<App />)
       await screen.findByText('Loading your profile…')
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/profile',
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        )
+      })
       const signal = fetchMock.mock.calls.find(
         ([url]) => url === '/api/profile',
       )?.[1]?.signal
+      expect(signal?.aborted).toBe(false)
       await userEvent
         .setup()
         .click(screen.getByRole('button', { name: 'Log out' }))
