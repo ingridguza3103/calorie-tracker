@@ -20,7 +20,7 @@ from app.rate_limit import AuthRateLimiter
 router = APIRouter(prefix="/api/maintenance", tags=["Maintenance"])
 logger = logging.getLogger(__name__)
 estimate_limiter = AuthRateLimiter(limit=2)
-provider_limiter = AuthRateLimiter(limit=10)
+provider_limiter = AuthRateLimiter(limit=10)  # Shared by maintenance, plans, and food estimates.
 ACTIVITY_FACTORS: dict[ActivityLevel, float] = {
     "sedentary": 1.2, "light": 1.375, "moderate": 1.55, "active": 1.725, "very_active": 1.9,
 }
@@ -112,7 +112,7 @@ async def estimate_for_profile(profile: ProfileRead, user_id: int, groq: GroqCli
     # No configured key means no provider attempt and no quota consumed.
     if groq.settings.api_key.get_secret_value():
         estimate_limiter.check(str(user_id))
-        provider_limiter.check("maintenance")
+        provider_limiter.check("groq")
     activity_input = ActivityInput.model_validate({
         "activity_description": profile.activity_description,
         "gym_sessions_per_week": profile.gym_sessions_per_week,

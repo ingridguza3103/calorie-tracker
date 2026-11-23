@@ -6,10 +6,14 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeVar
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints, ValidationError
+
+from app.food_nutrition import FOOD_PROMPT, FOOD_SCHEMA, FoodInterpretation
+
+Structured = TypeVar("Structured", bound=BaseModel)
 
 GROQ_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -140,12 +144,12 @@ class CompletionEnvelope(BaseModel):
     choices: list[CompletionChoice] = Field(min_length=1, max_length=1)
 
 
-def parse_activity_response(response: httpx.Response) -> ActivityInterpretation:
+def parse_structured_response(response: httpx.Response, model: type[Structured]) -> Structured:
     try:
         choice = CompletionEnvelope.model_validate_json(response.content).choices[0]
         if choice.message.refusal:
             raise ValueError("The model declined the request.")
-        return ActivityInterpretation.model_validate_json(choice.message.content)
+        return model.model_validate_json(choice.message.content)
     except (ValidationError, ValueError):
         raise GroqError(502, "The AI service returned an unusable estimate. Please try again.") from None
 
@@ -158,16 +162,31 @@ class GroqClient:
         self.transport = transport
 
     async def interpret_activity(self, activity: ActivityInput) -> ActivityInterpretation:
+        return await self.request_structured(
+            ACTIVITY_PROMPT, activity.model_dump(), "activity_interpretation",
+            ACTIVITY_SCHEMA, ActivityInterpretation,
+        )
+
+    async def estimate_food(self, description: str) -> FoodInterpretation:
+        return await self.request_structured(
+            FOOD_PROMPT, {"description": description}, "food_nutrition",
+            FOOD_SCHEMA, FoodInterpretation,
+        )
+
+    async def request_structured(
+        self, prompt: str, data: Mapping[str, object], schema_name: str,
+        schema: dict[str, object], response_model: type[Structured],
+    ) -> Structured:
         if not self.settings.api_key.get_secret_value():
             raise GroqError(503, "AI estimates are not configured. Set GROQ_API_KEY on the server.")
         payload = {
             "model": self.settings.model,
             "messages": [
-                {"role": "system", "content": ACTIVITY_PROMPT},
-                {"role": "user", "content": json.dumps(activity.model_dump())},
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": json.dumps(data)},
             ],
             "response_format": {"type": "json_schema", "json_schema": {
-                "name": "activity_interpretation", "strict": True, "schema": ACTIVITY_SCHEMA,
+                "name": schema_name, "strict": True, "schema": schema,
             }},
             "temperature": 0,
             "max_completion_tokens": 2048,
@@ -190,4 +209,4 @@ class GroqClient:
         except httpx.RequestError:
             raise GroqError(503, "The AI service could not be reached. Please try again later.") from None
         check_provider_status(response)
-        return parse_activity_response(response)
+        return parse_structured_response(response, response_model)

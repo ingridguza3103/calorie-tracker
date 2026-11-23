@@ -113,3 +113,20 @@ class NutritionPlan(Base):
     )
     profile_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+
+
+class FoodEstimate(Base):
+    __tablename__ = "food_estimates"
+    __table_args__ = (
+        UniqueConstraint("user_id", "cache_key", name="uq_food_estimates_user_cache"),
+        CheckConstraint("char_length(btrim(description)) BETWEEN 1 AND 2000", name="ck_food_estimates_description"),
+        CheckConstraint("jsonb_typeof(payload) = 'object'", name="ck_food_estimates_payload"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    cache_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    estimated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

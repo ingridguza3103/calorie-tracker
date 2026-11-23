@@ -1,7 +1,8 @@
 # Calorie Tracker
 
 A calorie-tracking application in development, using FastAPI, React with
-TypeScript, and PostgreSQL. Text-based AI food logging is planned.
+TypeScript, and PostgreSQL. It includes account profiles, calorie plans, and
+text-based AI food nutrition estimates. A daily food diary is planned.
 
 ## Local development
 
@@ -50,6 +51,7 @@ sessions in the same PostgreSQL database. The third migration adds one profile
 per account, including activity information and weight goals. Existing accounts
 can continue signing in before creating a profile.
 A fourth migration adds one saved calorie and nutrient plan per profile.
+A fifth stores food nutrition estimates with their serving and cooking notes.
 
 After editing the SQLAlchemy models, generate and review a migration:
 
@@ -103,8 +105,8 @@ python -m alembic -c backend/alembic.ini check
 python -m alembic -c backend/alembic.ini current
 ```
 
-The final command should show `0004_nutrition_plans (head)`. Alembic creates the
-users, login sessions, profiles, and saved-plan tables in Neon. Existing Docker
+The final command should show `0005_food_estimates (head)`. Alembic creates the
+users, sessions, profiles, plans, and food-estimate tables in Neon. Existing Docker
 records require a separate data import; schema migrations do not copy them.
 You can register a fresh account when testing the Neon-backed application.
 
@@ -294,8 +296,9 @@ save/redeploy. Set `GROQ_MODEL` or `GROQ_TIMEOUT_SECONDS` there only if overridi
 the defaults. Keep the direct Neon `DATABASE_URL` as it is. The frontend needs
 no key or `VITE_` variable. `.env.example` need not change for this feature.
 
-Only the activity description, gym frequency, and daily steps are sent to
-Groq. Account identifiers, cookies, passwords, age, height, weight, gender,
+For maintenance, only activity description, gym frequency, and daily steps are
+sent to Groq. Food estimation sends only its food description. Account identifiers,
+cookies, passwords, age, height, weight, gender,
 target weights, and deadlines are not sent. The raw provider response and error
 body are not logged or returned by the application.
 
@@ -353,8 +356,10 @@ The plan endpoint below adds timeline validation, nutrients, and persistence.
 
 The server makes one provider attempt per accepted request with a 2,048-token
 completion cap. It follows no redirects and performs no automatic retries.
-Requests are limited to two per account per minute and ten maintenance provider
-attempts per minute per server process. These bounds protect the current
+Maintenance requests are limited to two per account per minute. Maintenance,
+plan creation and food estimation share ten provider attempts per minute per
+server process. Food estimation additionally allows six new attempts per account
+per minute. These bounds protect the current
 single-worker deployment; additional workers/instances will need shared limits.
 Groq quotas apply across its organization, so check your actual account limits
 before manually retrying. Provider quota responses preserve a sanitized
@@ -389,9 +394,10 @@ python -m alembic -c backend/alembic.ini upgrade head
 python -m alembic -c backend/alembic.ini check
 ```
 
-The new revision is `0004_nutrition_plans`. It adds a table without changing
-existing accounts or profiles. Render's existing startup script applies this
-migration on deploy. No new packages, secrets, or configuration are required.
+Nutrition plans were added in `0004_nutrition_plans`; upgrading to head also
+applies later committed migrations. Existing accounts and profiles remain.
+Render's startup script applies migrations on deploy. No new packages, secrets,
+or configuration are required.
 
 ### API and persistence
 
@@ -461,6 +467,107 @@ Background: [CDC gradual weight loss](https://www.cdc.gov/healthy-weight-growth/
 and [NIDDK on the limits of linear calorie rules](https://www.niddk.nih.gov/health-information/professionals/diabetes-discoveries-practice/nih-body-weight-planner).
 These sources inform the defaults; the exact caps and implementation above are
 app choices rather than claims that every value is a universal clinical limit.
+
+## Food nutrition from text
+
+After saving a profile, use **What's on your plate?** to describe a food or meal
+and choose **Estimate nutrition**. The preview shows one whole-number calorie
+estimate, protein/carbohydrate/fat/fiber grams, edible serving weight, and the
+serving/cooking assumptions used. Example buttons fill the text without sending
+an AI request. All displayed totals cover the complete described serving.
+
+### Migration and configuration
+
+Keep the existing Groq key, model, database configuration, and `.env.example`.
+No new dependencies or secrets are needed. Apply `0005_food_estimates` before
+starting the updated application locally:
+
+```bash
+source backend/.venv/bin/activate
+python -m alembic -c backend/alembic.ini upgrade head
+python -m alembic -c backend/alembic.ini check
+```
+
+Render's existing startup migration command applies it on the next deployment.
+
+### Serving and cooking defaults
+
+| Description | Default basis when no other details are supplied |
+| --- | --- |
+| `apple` | One medium raw apple, skin included. |
+| `egg` | One large whole egg, about 50 g edible portion, with no added fat. |
+| `eggs` without a count | Two large eggs. |
+| `fried egg` | One large egg with one teaspoon of oil, about 4.5 g. |
+| Frying without a fat quantity | One teaspoon of oil for the whole described serving. |
+| Explicit butter/oil | Use the stated amount once; add no extra default oil. Assume it is eaten unless the description says otherwise. |
+| Boiled, poached, steamed, raw, or oil-free | Add no cooking fat. |
+| Rice, pasta, or legumes without raw/cooked status | Use cooked weight and record the assumption. Explicit raw/dry weights override it. |
+
+These rules are instructions to the configured model. The preview records its
+actual interpretation so users can check it. A description with several foods
+produces one combined result. Stated nutrition-label values and amounts should
+be scaled to the serving. Descriptions can use other languages; result names
+and notes are requested in English.
+
+Each successful estimate records 1-6 serving notes and 1-6 cooking notes. The
+model is asked to use `As described:` for supplied facts and `Assumed:` for missing details. Calories
+are a single integer; nutrient grams are rounded to one decimal. Zero-calorie
+drinks are supported. An unidentified or non-food description returns `422`
+instead of creating a misleading zero-calorie food.
+
+### API, saved assumptions, and reuse
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /api/food/estimate` | Send `{"description":"fried egg cooked with 1 tablespoon of butter"}` with the login cookie and `X-CSRF-Protection: 1`. New estimate: `201`; identical cached estimate: `200`. |
+| `GET /api/food/estimates/{id}` | Read one saved estimate belonging to the signed-in account; unknown or other-account IDs return `404`. |
+
+The API accepts a trimmed description of 1-2,000 characters and rejects extra
+fields such as `user_id`, `model`, or client-supplied calories. The food API
+requires login but does not require body/activity information. The normal
+dashboard shows its preview after onboarding. All responses use `no-store`.
+
+The database retains the original trimmed description, validated nutrition,
+assumptions, model ID, and estimate time. Cache keys include account, exact
+description, model, and the server's food-prompt version. Case and internal
+spacing are preserved; units with case-dependent meanings are not normalized.
+Identical requests reuse the saved record without consuming Groq quota.
+Changing the prompt's estimation rules should also increment
+`FOOD_PROMPT_VERSION` to avoid reusing an old interpretation. Unique keys make
+concurrent duplicate inserts safe; a browser double submit is also disabled.
+
+Food estimates are separate from dated diary entries. Creating an estimate
+does not change the calorie plan or a daily consumed total; the diary feature
+will attach estimates to entries later. The preview stays in component memory,
+is cleared when editing its description, and is discarded on logout or reload.
+Repeating the description can restore its saved estimate. No food data is put
+in localStorage. Leaving or signing out cancels the pending browser operation.
+
+### Validation and limitations
+
+Food and activity estimates share the same backend Groq connection, configured
+model, strict response mode, overall timeout, and sanitized provider errors.
+POSTs are never automatically retried. Timeout, quota, malformed-response and
+session-expiry states preserve the food text for appropriate manual recovery.
+Cached estimates remain available without a configured key; new ones need Groq.
+
+The backend validates recognition, integer calories, finite non-negative
+nutrients, bounded text, serving mass, fiber within total carbohydrate, and
+basic mass/energy-density consistency. Invalid or truncated output is never
+saved. The client also validates the response shape before showing it.
+
+This version uses AI approximations rather than a nutrition database or a live
+brand lookup. Basic validation cannot establish nutrient accuracy. Users should
+review the assumptions and supply better portion, preparation, or label details
+when needed. The backend preserves estimated food calories instead of forcing
+them to equal a simple 4/4/9 sum; alcohol, fiber and food-specific energy factors
+can affect that relationship. See [FDA calorie information](https://www.fda.gov/food/nutrition-facts-label/calories-nutrition-facts-label)
+and [USDA food composition documentation](https://fdc.nal.usda.gov/Foundation_Foods_Documentation/).
+
+Automated checks use mocked Groq responses and verify validation, ownership,
+cache reuse, quota/timeout handling, and browser cancellation. They do not claim
+to measure the configured model's real-world nutrition accuracy. Test the live
+connection locally with your existing private Groq key.
 
 ## Checks
 
