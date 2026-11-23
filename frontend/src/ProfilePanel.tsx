@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { accountErrorMessage } from './api'
 import { OnboardingWizard } from './OnboardingWizard'
+import { ConnectionNotice } from './ConnectionNotice'
 import {
   genderLabels,
   goalLabels,
@@ -134,6 +135,7 @@ export function ProfilePanel({
     return (
       <section className="profile-card" aria-live="polite">
         <p role="status">Loading your profile…</p>
+        <ConnectionNotice />
       </section>
     )
   if (state.status === 'error')

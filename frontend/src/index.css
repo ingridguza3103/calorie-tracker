@@ -423,6 +423,12 @@ form > .button-primary {
   color: var(--subtle);
   font-size: 10px;
 }
+.connection-notice {
+  margin: 14px 0 0;
+  color: var(--subtle);
+  font-size: 12px;
+  line-height: 1.6;
+}
 .form-error {
   margin: 16px 0 0;
   padding: 12px 14px;

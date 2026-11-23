@@ -204,9 +204,13 @@ describe('Accounts', () => {
   })
 
   it('lets the user retry a failed session check', async () => {
-    fetchMock.mockResolvedValueOnce(json({}, 500)).mockResolvedValueOnce(json({}, 401))
+    fetchMock
+      .mockResolvedValueOnce(json({}, 500))
+      .mockResolvedValueOnce(json({}, 500))
+      .mockResolvedValueOnce(json({}, 500))
+      .mockResolvedValueOnce(json({}, 401))
     render(<App />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong.')
+    expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent('Something went wrong.')
     await userEvent.setup().click(screen.getByRole('button', { name: /try again/i }))
     expect(await screen.findByRole('heading', { name: 'Welcome back.' })).toBeInTheDocument()
   })

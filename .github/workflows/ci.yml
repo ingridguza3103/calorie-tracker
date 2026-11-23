@@ -102,7 +102,7 @@ jobs:
       - name: Run frontend tests with coverage
         run: npm --prefix frontend run test:coverage
 
-      - name: Check reports and enforce 80% combined line coverage
+      - name: Check reports and enforce 80% combined line and branch coverage
         run: |
           test -s backend/coverage.xml
           test -s frontend/coverage/lcov.info
@@ -135,3 +135,22 @@ jobs:
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
+
+      - name: Build and smoke-test the deployment image
+        run: |
+          set -euo pipefail
+          docker build --tag calorie-tracker:ci .
+          cleanup() {
+            result=$?
+            if [ "$result" -ne 0 ]; then
+              docker logs calorie-tracker-smoke || true
+            fi
+            docker rm --force calorie-tracker-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach --name calorie-tracker-smoke --network host \
+            --env CALORIE_DB_HOST --env CALORIE_DB_PORT \
+            --env CALORIE_DB_NAME --env CALORIE_DB_USER --env CALORIE_DB_PASSWORD \
+            --env PORT=18001 --env APP_ORIGIN=http://127.0.0.1:18001 \
+            calorie-tracker:ci
+          python scripts/check_deployment.py http://127.0.0.1:18001

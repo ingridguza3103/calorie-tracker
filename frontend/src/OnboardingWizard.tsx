@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { genderLabels, goalLabels } from './profiles'
 import type { Gender, Goal, Profile, ProfileInput } from './profiles'
+import { ConnectionNotice } from './ConnectionNotice'
 
 type Step = 'goal' | 'details' | 'target'
 type Draft = Omit<Record<keyof ProfileInput, string>, 'goal' | 'gender'> & {
@@ -413,6 +414,7 @@ export function OnboardingWizard({
             Saving your profile…
           </p>
         )}
+        {saving && <ConnectionNotice />}
         <div className="wizard-actions">
           <div className="wizard-back-actions">
             {step !== 'goal' && (

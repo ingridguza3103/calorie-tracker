@@ -9,16 +9,6 @@ from app.database import engine
 from app.auth import router as auth_router
 from app.profiles import router as profile_router
 
-app = FastAPI(
-    title="Calorie Tracker API",
-    version="0.1.0",
-)
-
-app.include_router(auth_router)
-app.include_router(profile_router)
-
-
-@app.middleware("http")
 async def prevent_private_caching(
     request: Request, call_next: RequestResponseEndpoint,
 ) -> Response:
@@ -28,7 +18,6 @@ async def prevent_private_caching(
     return response
 
 
-@app.exception_handler(RequestValidationError)
 async def safe_validation_errors(_request: Request, exc: RequestValidationError) -> JSONResponse:
     """Validation responses must never echo submitted passwords."""
     details = [
@@ -38,12 +27,10 @@ async def safe_validation_errors(_request: Request, exc: RequestValidationError)
     return JSONResponse(status_code=422, content={"detail": details})
 
 
-@app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/ready")
 def ready() -> dict[str, str]:
     try:
         with engine.connect() as connection:
@@ -55,3 +42,17 @@ def ready() -> dict[str, str]:
         ) from None
 
     return {"status": "ready", "database": "connected"}
+
+
+def create_app() -> FastAPI:
+    api = FastAPI(title="Calorie Tracker API", version="0.1.0")
+    api.include_router(auth_router)
+    api.include_router(profile_router)
+    api.middleware("http")(prevent_private_caching)
+    api.add_exception_handler(RequestValidationError, safe_validation_errors)
+    api.add_api_route("/api/health", health, methods=["GET"])
+    api.add_api_route("/api/ready", ready, methods=["GET"])
+    return api
+
+
+app = create_app()

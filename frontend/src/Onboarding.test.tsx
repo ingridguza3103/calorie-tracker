@@ -383,11 +383,15 @@ describe('Onboarding', () => {
 
   it('shows loading and retry states without treating a failed profile request as a new account', async () => {
     let finish!: (response: Response) => void
-    fetchMock.mockResolvedValueOnce(json(person)).mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    fetchMock
+      .mockResolvedValueOnce(json(person))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+      )
+      .mockResolvedValueOnce(json({}, 500))
+      .mockResolvedValueOnce(json({}, 500))
     render(<App />)
     expect(await screen.findByText('Loading your profile…')).toHaveAttribute(
       'role',
@@ -396,9 +400,9 @@ describe('Onboarding', () => {
     await act(async () => {
       finish(json({}, 500))
     })
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not save or load',
-    )
+    expect(
+      await screen.findByRole('alert', {}, { timeout: 3000 }),
+    ).toHaveTextContent('Could not save or load')
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     await userEvent
       .setup()

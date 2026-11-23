@@ -4,6 +4,7 @@ import { accountErrorMessage, currentUser, signOut } from './api'
 import type { User } from './api'
 import { PageFrame } from './PageFrame'
 import { ProfilePanel } from './ProfilePanel'
+import { ConnectionNotice } from './ConnectionNotice'
 
 type AccountState =
   | { status: 'loading' }
@@ -56,6 +57,7 @@ function App() {
         <section className="state-panel" aria-live="polite">
           <span className="loading-dot" />
           <p role="status">Checking your session…</p>
+          <ConnectionNotice />
         </section>
       )}
       {account.status === 'error' && (
