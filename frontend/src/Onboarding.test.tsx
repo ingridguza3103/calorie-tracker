@@ -1,3 +1,4 @@
+import { stubApiFetch } from './test/mockApiFetch'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -88,7 +89,7 @@ beforeEach(() => {
     }
     return saved ? json(saved) : json({}, 404)
   })
-  vi.stubGlobal('fetch', fetchMock)
+  stubApiFetch(fetchMock)
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }))
 })
 
