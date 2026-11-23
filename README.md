@@ -40,7 +40,8 @@ http://127.0.0.1:8001/docs for the API documentation.
 
 ## Database changes
 
-Alembic uses the same connection settings as the application. The initial
+Alembic uses the application's database by default and the direct connection
+when `DATABASE_URL_UNPOOLED` is set. The initial
 migration creates `users` with a unique, case-sensitive username, a password
 hash field, and a creation timestamp. A second migration adds revocable login
 sessions in the same PostgreSQL database. The third migration adds one profile
@@ -55,6 +56,111 @@ python -m alembic -c backend/alembic.ini revision --autogenerate -m "describe sc
 
 Apply committed migrations with `upgrade head`, then run `check` to detect
 differences between the database schema and the application models.
+
+## Neon PostgreSQL
+
+Local Docker remains the default. With `DATABASE_URL` blank or unset, the API
+uses the existing `CALORIE_DB_*` settings. With a non-empty `DATABASE_URL`, that
+URL takes precedence and a local database password is not required by the API.
+Docker Compose still uses `CALORIE_DB_PASSWORD` when starting the local service.
+
+### Configure your Neon project
+
+1. Create a project on Neon's Free plan, using PostgreSQL 17 to match Docker.
+   Choose a region near your intended application host.
+2. Open **Connect** for the project and select the branch, compute, database,
+   and role that the application should use.
+3. With **Connection pooling** enabled, copy the connection string into
+   `DATABASE_URL` in your root `.env` file.
+4. Turn **Connection pooling** off and copy the direct connection string into
+   `DATABASE_URL_UNPOOLED`. Both strings must select the same endpoint and
+   database. The direct hostname does not include `-pooler`.
+
+Keep your existing local settings in `.env`. Add the two Neon values alongside
+them, using the actual connection strings copied from the Console:
+
+```dotenv
+# Examples only: replace these with your own copied connection strings.
+DATABASE_URL='postgresql://ROLE:PASSWORD@ep-YOUR-ENDPOINT-pooler.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+DATABASE_URL_UNPOOLED='postgresql://ROLE:PASSWORD@ep-YOUR-ENDPOINT.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+```
+
+Use the actual database name and hostname from Neon. Keep the password's URL
+escaping exactly as copied. `postgres://`, `postgresql://`, and
+`postgresql+psycopg://` prefixes are accepted; the app uses the installed
+psycopg 3 driver. These values belong only in server configuration; `.env` is
+ignored by Git. The committed `.env.example` contains blank URL fields.
+
+### Apply the existing migrations
+
+From the repository root, with the Neon values saved in `.env`:
+
+```bash
+source backend/.venv/bin/activate
+python -m alembic -c backend/alembic.ini current
+python -m alembic -c backend/alembic.ini upgrade head
+python -m alembic -c backend/alembic.ini check
+python -m alembic -c backend/alembic.ini current
+```
+
+The final command should show `0003_user_profiles (head)`. Alembic creates the
+existing users, login sessions, and profile tables in Neon. Existing Docker
+records require a separate data import; schema migrations do not copy them.
+You can register a fresh account when testing the Neon-backed application.
+
+The app uses the pooled URL for requests; Alembic uses a separate direct engine
+with no persistent client connection pool. A pooled Neon URL requires
+`DATABASE_URL_UNPOOLED` before migrations can run. The configuration also
+rejects a direct URL targeting a different endpoint, database, or port. The
+migration role may differ from the application role.
+
+Restart the API after changing database settings, then run the frontend as
+usual. `GET /api/ready` should return `{"status":"ready","database":"connected"}`.
+Sign up, save an onboarding profile, and refresh to check persistence.
+
+### SSL and connection behavior
+
+All non-loopback database connections use `sslmode=verify-full`, verifying both
+the certificate chain and the server hostname. A copied `sslmode=require` or
+`verify-ca` is strengthened automatically. Other URL parameters, including
+`channel_binding=require`, are preserved. Settings that disable SSL or permit
+an unencrypted fallback are rejected for remote hosts.
+
+The application supplies the CA bundle discovered by Python's system SSL
+configuration. If no bundle is available, install the operating system's CA
+certificates or provide a trusted `sslrootcert=/path/to/ca-bundle.pem` in the
+URL. An explicitly provided `sslrootcert` is preserved. Certificate failures
+should be fixed by correcting the trust store or hostname.
+
+Connection timeouts default to three seconds for loopback and ten seconds for
+remote databases; a URL's explicit `connect_timeout` is preserved. The existing
+connection health check remains enabled. Automatic psycopg prepared statements
+are disabled on Neon pooled connections, avoiding reliance on pooler settings.
+
+### Return to Docker development
+
+Clear both URL values in `.env` while keeping your working `CALORIE_DB_*` values:
+
+```dotenv
+DATABASE_URL=
+DATABASE_URL_UNPOOLED=
+```
+
+If you previously exported either URL in your shell, clear those exports too:
+
+```bash
+unset DATABASE_URL DATABASE_URL_UNPOOLED
+docker compose up -d --wait --wait-timeout 60 db
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+Restart the API to use Docker again. Shell environment variables take precedence
+over `.env`. Run the automated database tests with your local Docker settings;
+CI continues to use its PostgreSQL service and needs no Neon credentials.
+
+Connection details: [Neon pooling](https://neon.com/docs/connect/connection-pooling),
+[Neon SSL](https://neon.com/docs/connect/connect-securely), and
+[PostgreSQL SSL verification](https://www.postgresql.org/docs/17/libpq-ssl.html).
 
 ## Accounts and appearance
 

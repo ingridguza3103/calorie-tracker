@@ -2,19 +2,12 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import URL
+from app.database_settings import load_database_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
-database_url = URL.create(
-    drivername="postgresql+psycopg",
-    username=os.getenv("CALORIE_DB_USER", "calorie_app"),
-    password=os.environ["CALORIE_DB_PASSWORD"],
-    host=os.getenv("CALORIE_DB_HOST", "127.0.0.1"),
-    port=int(os.getenv("CALORIE_DB_PORT", "5433")),
-    database=os.getenv("CALORIE_DB_NAME", "calorie_tracker"),
-)
+database_url = load_database_url(os.environ)
 
 ALLOWED_ORIGINS = frozenset(
     origin.strip().rstrip("/")

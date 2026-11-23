@@ -4,11 +4,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from app.config import database_url
+from app.database_settings import database_connect_args
 
 engine = create_engine(
     database_url,
     pool_pre_ping=True,
-    connect_args={"connect_timeout": 3},
+    connect_args=database_connect_args(database_url),
 )
 
 
