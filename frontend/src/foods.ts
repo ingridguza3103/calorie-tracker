@@ -51,7 +51,7 @@ function validFood(value: unknown): value is FoodNutrition {
     Number.isInteger(value.calories) && notes(value.serving_assumptions) && notes(value.cooking_assumptions)
 }
 
-function isEstimate(value: unknown): value is FoodEstimate {
+export function isFoodEstimate(value: unknown): value is FoodEstimate {
   return record(value) && typeof value.id === 'number' && Number.isInteger(value.id) && value.id > 0 &&
     typeof value.description === 'string' && typeof value.model === 'string' &&
     typeof value.estimated_at === 'string' && Number.isFinite(Date.parse(value.estimated_at)) && validFood(value.food)
@@ -83,6 +83,6 @@ export async function estimateFood(description: string, signal: AbortSignal): Pr
   })
   await requireFoodSuccess(response)
   const result: unknown = await response.json().catch(() => null)
-  if (!isEstimate(result)) throw new AccountError('We could not read the food estimate. Please try again.')
+  if (!isFoodEstimate(result)) throw new AccountError('We could not read the food estimate. Please try again.')
   return result
 }

@@ -1,4 +1,6 @@
 from datetime import date, datetime
+from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
@@ -6,12 +8,16 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
@@ -119,6 +125,7 @@ class FoodEstimate(Base):
     __tablename__ = "food_estimates"
     __table_args__ = (
         UniqueConstraint("user_id", "cache_key", name="uq_food_estimates_user_cache"),
+        UniqueConstraint("id", "user_id", name="uq_food_estimates_id_user"),
         CheckConstraint("char_length(btrim(description)) BETWEEN 1 AND 2000", name="ck_food_estimates_description"),
         CheckConstraint("jsonb_typeof(payload) = 'object'", name="ck_food_estimates_payload"),
     )
@@ -130,3 +137,28 @@ class FoodEstimate(Base):
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     model: Mapped[str] = mapped_column(String(200), nullable=False)
     estimated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class DiaryEntry(Base):
+    __tablename__ = "diary_entries"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["food_estimate_id", "user_id"], ["food_estimates.id", "food_estimates.user_id"],
+            name="fk_diary_entries_estimate_owner", ondelete="NO ACTION",
+        ),
+        CheckConstraint("servings BETWEEN 0.01 AND 20", name="ck_diary_entries_servings"),
+        CheckConstraint("version >= 1", name="ck_diary_entries_version"),
+        Index("ix_diary_entries_user_date", "user_id", "entry_date"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    food_estimate_id: Mapped[int] = mapped_column(nullable=False)
+    entry_date: Mapped[date] = mapped_column(Date, nullable=False)
+    servings: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    estimate: Mapped[FoodEstimate] = relationship(lazy="joined")

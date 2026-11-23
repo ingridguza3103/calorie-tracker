@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { accountErrorMessage } from './api'
 import { ConnectionNotice } from './ConnectionNotice'
 import { estimateFood, FoodError } from './foods'
@@ -50,7 +51,11 @@ function FoodResult({ estimate }: Readonly<{ estimate: FoodEstimate }>) {
   )
 }
 
-export function FoodPanel({ onSessionExpired }: Readonly<{ onSessionExpired: () => void }>) {
+export function FoodPanel({ onSessionExpired, locked = false, renderActions }: Readonly<{
+  onSessionExpired: () => void
+  locked?: boolean
+  renderActions?: (estimate: FoodEstimate) => ReactNode
+}>) {
   const [description, setDescription] = useState('')
   const [result, setResult] = useState<FoodEstimate | null>(null)
   const [error, setError] = useState('')
@@ -103,7 +108,7 @@ export function FoodPanel({ onSessionExpired }: Readonly<{ onSessionExpired: () 
       <h2 id="food-heading">What’s on your plate?</h2>
       <p className="profile-intro">Describe a food or meal. Include amounts and cooking details when you know them.</p>
       <form noValidate onSubmit={(event) => { event.preventDefault(); void submit() }}>
-        <fieldset className="food-fields" disabled={busy}>
+        <fieldset className="food-fields" disabled={busy || locked}>
           <div className="profile-field">
             <label htmlFor="food-description">Food description</label>
             <textarea id="food-description" ref={input} rows={3} value={description}
@@ -124,6 +129,7 @@ export function FoodPanel({ onSessionExpired }: Readonly<{ onSessionExpired: () 
       {busy && <><p role="status">Estimating your food…</p><ConnectionNotice /></>}
       {error && <p role="alert" className="form-error">{error}</p>}
       {result && <FoodResult estimate={result} />}
+      {result && renderActions?.(result)}
     </section>
   )
 }

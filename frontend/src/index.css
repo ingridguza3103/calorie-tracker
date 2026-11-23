@@ -1073,3 +1073,35 @@ form > .button-primary {
     transition: none !important;
   }
 }
+
+.diary-workspace { display: grid; gap: 20px; min-width: 0; }
+.diary-date { display: flex; align-items: end; flex-wrap: wrap; gap: 12px 20px; }
+.diary-date .profile-field { flex: 1 1 180px; max-width: 260px; }
+.diary-date p { margin: 0 0 12px; font-size: 13px; }
+.diary-date input[type='date'], .diary-edit-fields input[type='date'] {
+  box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; display: block;
+}
+.diary-calorie-progress progress {
+  display: block; appearance: none; width: 100%; height: 14px;
+  overflow: hidden; border: 1px solid var(--line); border-radius: 20px;
+  background: var(--background); accent-color: var(--pink);
+}
+.diary-calorie-progress progress::-webkit-progress-bar { background: var(--background); }
+.diary-calorie-progress progress::-webkit-progress-value { background: var(--pink); border-radius: 20px; }
+.diary-calorie-progress progress::-moz-progress-bar { background: var(--pink); border-radius: 20px; }
+.diary-calorie-progress p { font-size: 13px; line-height: 1.6; }
+.diary-nutrients .profile-help { margin: 6px 0 0; }
+.diary-add { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+.diary-add .profile-field { max-width: 260px; }
+.diary-entries { list-style: none; padding: 0; margin: 18px 0 0; }
+.diary-entry { padding: 20px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.diary-entry:last-child { padding-bottom: 0; }
+.diary-entry-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.diary-entry-heading h3 { margin: 0; font-size: 17px; }
+.diary-entry-heading p { margin: 4px 0 0; }
+.diary-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.diary-edit-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 480px) {
+  .diary-edit-fields { grid-template-columns: minmax(0, 1fr); }
+  .diary-actions > button { flex: 1 1 120px; }
+}

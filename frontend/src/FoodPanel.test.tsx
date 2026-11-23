@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
+import { diaryDay } from './test/diaryFixtures'
 import { FoodPanel } from './FoodPanel'
 import type { FoodEstimate } from './foods'
 
@@ -224,6 +225,7 @@ it('clears food results and drafts when another account signs in', async () => {
     if (url === '/api/auth/me') return json({ id: 1, username: 'Alice' })
     if (url === '/api/auth/login') return json({ id: 2, username: 'Bob' })
     if (url === '/api/auth/logout') return new Response(null, { status: 204 })
+    if (String(url).startsWith('/api/diary?')) return json(diaryDay(new URL(String(url), 'http://local.test').searchParams.get('date')!))
     if (url === '/api/profile') return json(savedProfile)
     if (url === '/api/food/estimate') return json(estimate, 201)
     return json({}, 404)
