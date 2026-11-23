@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react'
 import { useTheme } from './theme'
 
-export function PageFrame({ children }: Readonly<{ children: ReactNode }>) {
+export function PageFrame({
+  children,
+  workspace = false,
+}: Readonly<{ children: ReactNode; workspace?: boolean }>) {
   const { theme, toggleTheme } = useTheme()
   return (
     <div className="app-shell">
@@ -42,7 +45,13 @@ export function PageFrame({ children }: Readonly<{ children: ReactNode }>) {
               />
             ) : (
               <>
-                <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.7" />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="4"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                />
                 <path
                   d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
                   stroke="currentColor"
@@ -56,44 +65,50 @@ export function PageFrame({ children }: Readonly<{ children: ReactNode }>) {
         </button>
       </header>
 
-      <main className="account-layout">
-        <section className="welcome-panel" aria-labelledby="welcome-heading">
-          <p className="eyebrow">
-            <span className="pink-dot" /> YOUR DAY, A LITTLE CLEARER
-          </p>
-          <h1 id="welcome-heading">
-            <span className="headline-line">Your food.</span>
-            <span className="headline-line">Your goals.</span>
-            <span className="headline-line headline-highlight">Your own pace.</span>
-          </h1>
-          <p className="welcome-copy">
-            Build a little awareness.
-            <br />
-            Make room for the habits that feel like you.
-          </p>
-          <div className="balance-art" aria-hidden="true">
-            <div className="orbit orbit-one" />
-            <div className="orbit orbit-two" />
-            <div className="balance-disc">
-              <span>little by little</span>
-              <svg viewBox="0 0 64 64" fill="none">
-                <path
-                  d="m14 35 12 12 25-29"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span>every day.</span>
+      <main className={workspace ? 'workspace-layout' : 'account-layout'}>
+        {!workspace && (
+          <section className="welcome-panel" aria-labelledby="welcome-heading">
+            <p className="eyebrow">
+              <span className="pink-dot" /> YOUR DAY, A LITTLE CLEARER
+            </p>
+            <h1 id="welcome-heading">
+              <span className="headline-line">Your food.</span>
+              <span className="headline-line">Your goals.</span>
+              <span className="headline-line headline-highlight">
+                Your own pace.
+              </span>
+            </h1>
+            <p className="welcome-copy">
+              Build a little awareness.
+              <br />
+              Make room for the habits that feel like you.
+            </p>
+            <div className="balance-art" aria-hidden="true">
+              <div className="orbit orbit-one" />
+              <div className="orbit orbit-two" />
+              <div className="balance-disc">
+                <span>little by little</span>
+                <svg viewBox="0 0 64 64" fill="none">
+                  <path
+                    d="m14 35 12 12 25-29"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>every day.</span>
+              </div>
+              <span className="art-label label-food">a little balance</span>
+              <span className="art-label label-you">a little more you</span>
             </div>
-            <span className="art-label label-food">a little balance</span>
-            <span className="art-label label-you">a little more you</span>
-          </div>
-          <p className="welcome-footer">SMALL STEPS. REAL LIFE.</p>
-        </section>
+            <p className="welcome-footer">SMALL STEPS. REAL LIFE.</p>
+          </section>
+        )}
 
-        <div className="account-content">{children}</div>
+        <div className={workspace ? 'workspace-content' : 'account-content'}>
+          {children}
+        </div>
       </main>
       <footer className="site-footer">
         <span>CALORIE TRACKER</span>

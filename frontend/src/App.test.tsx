@@ -27,7 +27,7 @@ async function loginForm() {
 beforeEach(() => {
   localStorage.clear()
   delete document.documentElement.dataset.theme
-  fetchMock.mockReset().mockImplementation(() => Promise.resolve(json({}, 401)))
+  fetchMock.mockReset().mockImplementation((input) => Promise.resolve(json({}, input === '/api/profile' ? 404 : 401)))
   vi.stubGlobal('fetch', fetchMock)
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }))
 })
@@ -164,7 +164,7 @@ describe('Accounts', () => {
 
   it('restores a signed-in user and logs out', async () => {
     let finish!: (response: Response) => void
-    fetchMock.mockResolvedValueOnce(json(person)).mockReturnValueOnce(
+    fetchMock.mockResolvedValueOnce(json(person)).mockResolvedValueOnce(json({}, 404)).mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve
       }),
@@ -191,6 +191,7 @@ describe('Accounts', () => {
   it('retains the user after a failed logout and allows another attempt', async () => {
     fetchMock
       .mockResolvedValueOnce(json(person))
+      .mockResolvedValueOnce(json({}, 404))
       .mockRejectedValueOnce(new TypeError('offline'))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
     render(<App />)

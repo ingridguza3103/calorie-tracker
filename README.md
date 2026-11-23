@@ -134,8 +134,21 @@ week, and 0–100,000 steps per day. Age, gym frequency, and steps must be whole
 numbers. These bounds check input shape; calorie targets and whether a goal's
 timeline is realistic will be calculated in a later feature.
 
-The onboarding form is the next implementation step. No profile form or AI
-calorie calculations are included yet.
+After signing in, new accounts see a responsive onboarding wizard: goal, body
+and weekly activity details, then target weight and date. Maintenance goals use
+only the first two steps. Inline checks match the API's input limits, and the
+wizard keeps entered values when moving back and forth. A failed save preserves
+the draft so it can be corrected or retried.
+
+Successful saves show a profile summary. Returning users load their saved
+profile from the API and can choose **Edit profile** to change it; **Cancel**
+discards those edits. Unsaved drafts stay in memory and are discarded on reload
+or logout. Profile data is not stored in localStorage. An expired login session
+returns the user to the login form.
+
+The wizard supports keyboard controls and the existing light/dark theme. On
+phone screens, goal cards stack and fields resize to the available width. AI
+calorie calculations and timeline-feasibility checks are later features.
 
 ## Checks
 

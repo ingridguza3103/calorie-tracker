@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AuthForm } from './AuthForm'
 import { accountErrorMessage, currentUser, signOut } from './api'
 import type { User } from './api'
 import { PageFrame } from './PageFrame'
+import { ProfilePanel } from './ProfilePanel'
 
 type AccountState =
   | { status: 'loading' }
@@ -23,6 +24,10 @@ function App() {
   const [account, setAccount] = useState<AccountState>({ status: 'loading' })
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState('')
+  const sessionExpired = useCallback(
+    () => setAccount({ status: 'signed-out' }),
+    [],
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -46,7 +51,7 @@ function App() {
   }
 
   return (
-    <PageFrame>
+    <PageFrame workspace={account.status === 'signed-in'}>
       {account.status === 'loading' && (
         <section className="state-panel" aria-live="polite">
           <span className="loading-dot" />
@@ -70,33 +75,41 @@ function App() {
         </section>
       )}
       {account.status === 'signed-out' && (
-        <AuthForm onAuthenticated={(user) => setAccount({ status: 'signed-in', user })} />
+        <AuthForm
+          onAuthenticated={(user) => setAccount({ status: 'signed-in', user })}
+        />
       )}
       {account.status === 'signed-in' && (
-        <section className="account-panel signed-in" aria-labelledby="signed-in-heading">
-          <div className="user-avatar" aria-hidden="true">
-            {account.user.username.charAt(0).toUpperCase()}
-          </div>
-          <p className="eyebrow">YOU’RE RIGHT WHERE YOU NEED TO BE</p>
-          <h2 id="signed-in-heading">
-            Welcome, <span className="username">{account.user.username}</span>.
-          </h2>
-          <p className="panel-intro">Your account is ready. A little clarity starts here.</p>
-          <div className="diary-placeholder">
-            <span className="pink-dot" />
+        <section
+          className="profile-workspace"
+          aria-labelledby="signed-in-heading"
+        >
+          <div className="workspace-header">
             <div>
-              <h3>A fresh page.</h3>
-              <p>This is where your daily food diary and progress will live.</p>
+              <p className="eyebrow">A LITTLE MORE YOU</p>
+              <h1 id="signed-in-heading">
+                Welcome,{' '}
+                <span className="username">{account.user.username}</span>.
+              </h1>
             </div>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={logout}
+              disabled={loggingOut}
+            >
+              {loggingOut ? 'Logging out…' : 'Log out'}
+            </button>
           </div>
           {logoutError && (
             <p className="form-error" role="alert">
               {logoutError}
             </p>
           )}
-          <button type="button" className="button-secondary" onClick={logout} disabled={loggingOut}>
-            {loggingOut ? 'Logging out…' : 'Log out'}
-          </button>
+          <ProfilePanel
+            key={account.user.id}
+            onSessionExpired={sessionExpired}
+          />
         </section>
       )}
     </PageFrame>
