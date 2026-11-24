@@ -136,6 +136,23 @@ async def compare(args: argparse.Namespace) -> dict[str, object]:
     return report
 
 
+def report_output(path: Path) -> Path:
+    """Resolve CLI paths before checking the fixed report-directory boundary."""
+    reports = ROOT / "reports"
+    try:
+        resolved = (ROOT / path).resolve()
+        # Refuse a redirected reports directory as well as escaping file links.
+        if reports.resolve() != reports or not resolved.is_relative_to(reports):
+            raise ValueError
+        if resolved.suffix != ".json" or (resolved.exists() and not resolved.is_file()):
+            raise ValueError
+        if reports.exists() and not reports.is_dir():
+            raise ValueError
+    except (OSError, RuntimeError, ValueError):
+        raise ValueError("--output must be a JSON file inside the project's reports directory.") from None
+    return resolved
+
+
 def main() -> None:
     load_dotenv(ROOT / ".env")
     parser = argparse.ArgumentParser(description=__doc__)
@@ -144,10 +161,15 @@ def main() -> None:
     parser.add_argument("--cases", nargs="+", choices=[case.name for case in CASES])
     parser.add_argument("--reasoning-effort", choices=("low", "medium", "high"), default="low")
     parser.add_argument("--delay", type=float, default=22, help="Seconds between calls, from 0 to 60; default 22.")
-    parser.add_argument("--output", type=Path, default=ROOT / "reports/groq-comparison.json")
+    parser.add_argument("--output", type=Path, default=ROOT / "reports/groq-comparison.json",
+                        help="JSON report path inside the project's reports directory.")
     args = parser.parse_args()
     if not 0 <= args.delay <= 60:
         parser.error("--delay must be from 0 to 60 seconds.")
+    try:
+        output = report_output(args.output)
+    except ValueError as error:
+        parser.error(str(error))
     try:
         report = asyncio.run(compare(args))
     except ValueError:
@@ -155,9 +177,14 @@ def main() -> None:
     if not args.run:
         print(json.dumps(report, indent=2))
         return
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("Comparison saved to " + str(args.output))
+    try:
+        # The destination may have changed during the live comparison.
+        output = report_output(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except (OSError, ValueError):
+        raise SystemExit("Could not save the report inside the project's reports directory.") from None
+    print("Comparison saved to " + str(output))
     if any(row["status"] != "pass" for row in report["rows"]):
         raise SystemExit(1)
 

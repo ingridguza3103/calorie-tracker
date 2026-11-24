@@ -951,6 +951,10 @@ and saves partial results; it never retries or upgrades the plan. An output
 are saved to ignored `reports/groq-comparison.json`. No key, headers, raw provider
 body or reasoning text is written. No live calls run in CI. For a second run with
 more reasoning, use `--reasoning-effort medium --output reports/groq-medium.json`.
+Relative output paths are based on the repository root. Output must be a `.json`
+file inside that repository's `reports/` directory; traversal or symlink paths
+that escape it, and a symlinked `reports/` directory, are rejected before any
+Groq calls. The destination is checked again before writing the report.
 Use `--models qwen/qwen3.8-27b` only for an explicit preview-model evaluation.
 
 Prompt character counts are reproducible locally; actual token savings and model
