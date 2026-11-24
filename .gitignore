@@ -22,3 +22,5 @@ backend/coverage.xml
 backend/coverage.json
 frontend/coverage/
 .vitest/
+frontend/playwright-report/
+frontend/test-results/

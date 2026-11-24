@@ -102,6 +102,13 @@ jobs:
       - name: Run frontend tests with coverage
         run: npm --prefix frontend run test:coverage
 
+      - name: Install browser engines
+        working-directory: frontend
+        run: npx --no-install playwright install --with-deps chromium webkit
+
+      - name: Verify desktop and phone journeys
+        run: npm --prefix frontend run test:e2e
+
       - name: Check reports and enforce 80% combined line and branch coverage
         run: |
           test -s backend/coverage.xml
