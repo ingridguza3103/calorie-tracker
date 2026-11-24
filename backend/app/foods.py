@@ -22,7 +22,7 @@ from app.rate_limit import AuthRateLimiter
 
 router = APIRouter(prefix="/api/food", tags=["Food estimates"])
 food_limiter = AuthRateLimiter(limit=6)
-FOOD_PROMPT_VERSION = "food-v1"
+FOOD_PROMPT_VERSION = "food-v3-notes"
 
 
 class FoodEstimateRequest(BaseModel):
@@ -40,8 +40,8 @@ class FoodEstimateRead(BaseModel):
     estimated_at: datetime
 
 
-def cache_key(description: str, model: str) -> str:
-    canonical = json.dumps([FOOD_PROMPT_VERSION, model, description], ensure_ascii=False, separators=(",", ":"))
+def cache_key(description: str, model: str, reasoning_effort: str = "low") -> str:
+    canonical = json.dumps([FOOD_PROMPT_VERSION, model, reasoning_effort, description], ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -91,7 +91,7 @@ async def estimate_food(
 ) -> FoodEstimateRead:
     """Estimate the complete described serving, reusing an identical saved request."""
     user_id = user.id
-    key = cache_key(data.description, groq.settings.model)
+    key = cache_key(data.description, groq.settings.model, groq.settings.reasoning_effort)
     cached = await run_in_threadpool(find_cached, db, user_id, key)
     if cached is not None:
         return cached

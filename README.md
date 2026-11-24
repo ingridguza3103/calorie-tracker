@@ -296,9 +296,11 @@ Weight goals and deadlines do not influence maintenance calories.
 GROQ_API_KEY=replace_with_your_private_groq_key
 GROQ_MODEL=openai/gpt-oss-20b
 GROQ_TIMEOUT_SECONDS=20
+# Optional, for GPT-OSS models: low (default), medium, or high
+GROQ_REASONING_EFFORT=low
 ```
 
-Only the key is required; the model and timeout above are built-in defaults.
+Only the key is required; the model, timeout and reasoning effort above have built-in defaults.
 The timeout accepts 5-60 seconds. A different model must support Groq's strict
 `json_schema` structured-output mode; `openai/gpt-oss-120b` is another supported
 choice. Check availability and your account's free quota before switching.
@@ -306,7 +308,8 @@ There is no automatic fallback to another model or paid plan.
 
 Restart the local API after configuration changes. On Render, add
 `GROQ_API_KEY` under the existing calorie-tracker service's **Environment** and
-save/redeploy. Set `GROQ_MODEL` or `GROQ_TIMEOUT_SECONDS` there only if overriding
+save/redeploy. Set the optional `GROQ_MODEL`, `GROQ_TIMEOUT_SECONDS` or
+`GROQ_REASONING_EFFORT` there only if overriding
 the defaults. Keep the direct Neon `DATABASE_URL` as it is. The frontend needs
 no key or `VITE_` variable. `.env.example` need not change for this feature.
 
@@ -883,3 +886,80 @@ References: [Render deployments](https://render.com/docs/deploys),
 [Blueprints](https://render.com/docs/blueprint-spec),
 [health checks](https://render.com/docs/health-checks), and
 [free service behavior](https://render.com/docs/free).
+
+
+## Groq token use and model comparison
+
+The food and activity system prompts use shorter instructions and request brief
+assumption notes. User JSON is compact and preserves Unicode. GPT-OSS models
+use `reasoning_effort=low` by default; set it to `medium` or `high` if evaluation
+shows that more reasoning improves your cases. Other models receive no
+GPT-OSS-specific reasoning parameter. Strict JSON schemas, local validation,
+whole-request deadlines, and the 2,048 completion-token ceiling remain in place.
+The ceiling includes reasoning; reducing it alone can truncate valid responses.
+Hiding reasoning text does not remove the tokens the model spends generating it.
+
+A new prompt/cache version applies to new food estimates. The cache also includes
+the reasoning setting, so changing it does not reuse an older estimate. Existing
+diary entries keep their saved nutrition snapshot. Existing plans remain saved
+until their usual invalidation; changing the prompt does not regenerate them.
+
+As checked on 24 November 2026:
+
+| Model | Status | Strict JSON | Public Free-plan limits (RPM / RPD / TPM / TPD) |
+|---|---|---|---|
+| `openai/gpt-oss-20b` | Production; current default | Yes | 30 / 1,000 / 8,000 / 200,000 |
+| `openai/gpt-oss-120b` | Production; comparison candidate | Yes | 30 / 1,000 / 8,000 / 200,000 |
+| `qwen/qwen3.8-27b` | Preview; optional evaluation | Yes | 30 / 1,000 / 8,000 / 200,000 |
+
+These are the public **Free Plan Limits** table, not the Developer-plan figures.
+Actual limits vary by organization. GPT-OSS 120B is a candidate for better
+interpretation, not a demonstrated nutrition accuracy improvement. The default
+stays 20B until a representative comparison justifies a switch. Qwen is a preview
+model and may be discontinued; it is not the production default. There is no
+paid fallback or automatic upgrade.
+
+Sources: [models](https://console.groq.com/docs/models),
+[strict schemas](https://console.groq.com/docs/structured-outputs),
+[Free Plan Limits](https://console.groq.com/docs/rate-limits), and
+[reasoning effort](https://console.groq.com/docs/reasoning).
+
+The optional comparison tool imports the exact production payload builder and
+validator. It sends only predefined synthetic foods, without connecting to the
+database, accessing accounts, or changing application data. It records provider
+prompt/completion/total tokens, reasoning tokens when supplied, wall latency,
+validated nutrition and broad serving/preparation checks. Those checks are not
+proof of nutritional accuracy. Inspect assumptions and compare repeated runs.
+
+From the repository root, in the activated backend environment:
+
+```bash
+# Preview the models and 13 cases; no key or network calls are needed.
+python scripts/compare_groq.py
+
+# Optional live comparison: 6 requests using your private existing root .env key.
+python scripts/compare_groq.py --run --cases apple fried butter
+
+# All 13 cases across both production models: 26 requests.
+python scripts/compare_groq.py --run
+```
+
+The default 22-second spacing is conservative for the public free quotas; shared
+traffic can still exhaust limits. The tool stops on the first provider error
+and saves partial results; it never retries or upgrades the plan. An output
+`status=fail` means a broad case check failed, not a transport failure. Reports
+are saved to ignored `reports/groq-comparison.json`. No key, headers, raw provider
+body or reasoning text is written. No live calls run in CI. For a second run with
+more reasoning, use `--reasoning-effort medium --output reports/groq-medium.json`.
+Use `--models qwen/qwen3.8-27b` only for an explicit preview-model evaluation.
+
+Prompt character counts are reproducible locally; actual token savings and model
+quality require a successful live run. Mocked tests do not establish those results.
+
+The [live Playground smoke comparison](docs/groq-playground-smoke.md) records
+the small 20B/120B check and the raw-food assumption fix. The final food prompt
+is 1,744 characters (41.1% shorter than the original 2,960); the activity prompt
+is 784 characters (40.0% shorter than 1,306). These are character counts, not
+measured API token savings. Both assumption lists must be nonempty for recognized
+food. Cache version `food-v3-notes` prevents reuse of older prompt results for
+new estimates while preserving existing diary entries.
