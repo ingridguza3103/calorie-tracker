@@ -124,7 +124,7 @@ def test_extreme_goal_is_blocked_before_calling_groq_or_saving(
 def test_excessive_calorie_adjustment_is_not_persisted(
     account: TestClient, payload: dict[str, object], provider: list[httpx.Request],
 ) -> None:
-    account.put("/api/profile", json={**payload, "goal": "lose", "target_weight_kg": 70,
+    account.put("/api/profile", json={**payload, "goal": "lose", "current_weight_kg": 45, "height_cm": 140, "target_weight_kg": 40,
         "target_date": (datetime.now(UTC).date() + timedelta(days=60)).isoformat()})
     response = account.post("/api/plan", json={})
     assert response.status_code == 422 and response.json()["detail"]["code"] == "calorie_adjustment_too_large"
@@ -246,3 +246,23 @@ def test_cached_plan_remains_available_without_a_configured_key(
         assert account.post("/api/plan", json={}).json() == saved
     finally:
         main.app.dependency_overrides[maintenance.get_groq_client] = override
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_ambitious_four_week_gain_is_saved_and_reloaded_without_more_ai_calls(
+    account: TestClient, payload: dict[str, object], provider: list[httpx.Request], db_session: Session, legacy: bool,
+) -> None:
+    deadline = (datetime.now(UTC).date() + timedelta(days=28)).isoformat()
+    assert account.put("/api/profile", json={**payload, "goal": "gain", "target_weight_kg": 77, "target_date": deadline}).status_code == 200
+    created = account.post("/api/plan", json={})
+    assert created.status_code == 201
+    saved = created.json()
+    assert saved["targets"]["calorie_adjustment"] == 550 and saved["warnings"]
+    if legacy:
+        owner = account.get("/api/auth/me").json()["id"]
+        record = db_session.get(NutritionPlan, owner)
+        record.payload = {key: value for key, value in record.payload.items() if key != "warnings"}
+        db_session.commit()
+    assert account.get("/api/plan").json() == saved
+    assert account.post("/api/plan", json={}).json() == saved
+    assert len(provider) == 1

@@ -50,6 +50,9 @@ Use **Plan** for targets and their assumptions, and **Profile** to review or edi
 your details. The links `/#diary`, `/#plan`, and `/#profile` work on Render without
 additional server routes. Tab switches retain in-memory drafts and the selected
 diary date; logout clears account state. Reload restores saved data, not drafts.
+The date selector sits in the **Food diary** header, alongside today's local
+date. It selects the day for progress, entries, and new food logs. Today remains
+visible when viewing history, and the **Today** button returns to the current day.
 
 ## Database changes
 
@@ -433,20 +436,38 @@ edit while Groq is responding prevents the old snapshot from being saved.
 
 ### Automatic-plan limits
 
-These are conservative **application policies**, not a medical assessment or a
+These are **application policies**, not a medical assessment or a
 promise that a particular goal will be reached. A rejected goal returns `422`
 with an explanation, the relevant field, and an optional suggested target date.
-The interface offers **Adjust goal** to edit the saved details. Structurally
-valid profiles may be saved as drafts even when their goal cannot produce a plan.
+**Adjust goal** opens an existing gain/loss profile directly at target weight
+and date. **Use suggested date** pre-fills that date for review; it does not save
+or call Groq. Users can edit either target field, then save and explicitly
+create a plan again. Maintain goals and body/activity errors open full profile
+editing. Structurally valid profiles may be saved as drafts even when their
+goal cannot produce a plan.
 
 | Check | Policy |
 | --- | --- |
 | Target date | Future UTC date within 730 days; use intermediate goals for longer periods. |
-| Weekly loss | At most the smaller of 0.9 kg or 1% of current weight. |
-| Weekly gain | At most the smaller of 0.5 kg or 0.5% of current weight. |
-| Daily deficit/surplus | At most the smaller of 500 kcal or 20% of estimated maintenance. |
+| Weekly loss | At most 2 lb/week (about 0.91 kg/week). |
+| Weekly gain | At most 0.5 kg/week, without the previous body-weight percentage cap. |
+| Daily deficit | At most 1,000 kcal, further reduced to respect the intake floor. |
+| Daily surplus | At most 750 kcal; the weekly gain limit still applies. |
 | Daily intake floor | 1,200 kcal for the existing female equation choice; 1,500 kcal for the other choices. |
 | Loss target | Target BMI must be at least 18.5. This is a screening guard, not a diagnosis. |
+
+Plans remain usable with an **Ambitious pace** note above 0.5 kg/week loss or
+a 500 kcal deficit, and above 0.25 kg/week gain or a 500 kcal surplus. These
+warning thresholds and hard ceilings are app policy, not universal clinical
+limits. The [NHS](https://www.nhs.uk/live-well/healthy-weight/managing-your-weight/healthy-ways-to-gain-weight/) suggests around 300-500 additional kcal/day for gradual gain;
+the app's higher ceiling is not a claim that faster gain is muscle or suits
+every person. Lower estimated maintenance can still require a slower loss pace.
+
+For example, a 2 kg gain over 28 days now requests a 550 kcal daily surplus and
+0.5 kg/week, so it is permitted with a pace warning. The old 20%/500 kcal and
+body-weight percentage restrictions no longer turn that example into a
+mandatory two-month timeline. Warnings are also derived for older cached plans
+without regenerating them or changing their saved targets.
 
 Date, weight, and weekly-rate checks happen before spending Groq quota. After
 activity estimation, calorie/floor checks may require a further extension.
@@ -703,7 +724,7 @@ The test server applies the existing migrations. It forces local connection
 URLs and verifies that the resulting database host is loopback. It uses the
 existing local password and other Docker settings from the root configuration.
 
-The suite contains 15 scenarios in each of three browser projects:
+The suite contains 18 scenarios in each of three browser projects:
 
 | Project | Engine and viewport |
 | --- | --- |

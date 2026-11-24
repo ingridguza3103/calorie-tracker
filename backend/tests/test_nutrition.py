@@ -4,7 +4,7 @@ import pytest
 
 from app.groq_client import ActivityInterpretation
 from app.maintenance import MaintenanceEstimate
-from app.nutrition import GoalProblem, calculate_plan, nutrient_targets, suggest_date, validate_goal
+from app.nutrition import GoalProblem, calculate_plan, calorie_adjustment, nutrient_targets, suggest_date, validate_goal
 from app.profiles import ProfileRead
 
 TODAY = date(2026, 11, 23)
@@ -76,13 +76,12 @@ def test_fifteen_kilos_in_one_week_is_rejected_with_more_time_suggested(goal: st
     assert date.fromisoformat(error.value.detail["suggested_target_date"]) > TODAY + timedelta(days=7)
 
 
-@pytest.mark.parametrize("goal,days", [("lose", 60), ("gain", 100)])
-def test_calorie_limit_can_require_a_longer_timeline_than_weekly_rate(goal: str, days: int) -> None:
+def test_calorie_limit_can_require_a_longer_timeline_than_weekly_rate() -> None:
     with pytest.raises(GoalProblem) as error:
-        calculate_plan(profile(goal, days), estimate(1600), TODAY)
+        calculate_plan(profile("lose", 60), estimate(1600), TODAY)
     assert error.value.detail["code"] == "calorie_adjustment_too_large"
     suggested = date.fromisoformat(error.value.detail["suggested_target_date"])
-    changed = profile(goal, (suggested - TODAY).days)
+    changed = profile("lose", (suggested - TODAY).days)
     assert calculate_plan(changed, estimate(1600), TODAY).targets.daily_calories >= 1200
 
 
@@ -103,7 +102,7 @@ def test_rounding_never_increases_the_requested_deficit_or_surplus() -> None:
         plan = calculate_plan(saved, estimate(), TODAY)
         exact = (saved.target_weight_kg - saved.current_weight_kg) * 7700 / days
         assert abs(plan.targets.calorie_adjustment) <= abs(exact)
-        assert abs(plan.targets.calorie_adjustment) <= min(500, 2400 * 0.20)
+        assert abs(plan.targets.calorie_adjustment) <= (1000 if goal == "lose" else 750)
 
 
 def test_macro_energy_and_distribution_remain_consistent_across_supported_inputs() -> None:
@@ -121,3 +120,52 @@ def test_macro_energy_and_distribution_remain_consistent_across_supported_inputs
 def test_very_long_suggestions_do_not_overflow_dates() -> None:
     assert suggest_date(TODAY, 731) is None
     assert suggest_date(TODAY, 10.1) == TODAY + timedelta(days=11)
+
+
+@pytest.mark.parametrize("weight", [50, 75, 100])
+def test_two_kilos_gain_in_four_weeks_is_allowed_with_an_ambitious_pace_note(weight: int) -> None:
+    saved = profile("gain", 28, current_weight_kg=weight, target_weight_kg=weight + 2)
+    plan = calculate_plan(saved, estimate(1700), TODAY)
+    assert plan.targets.calorie_adjustment == 550
+    assert plan.targets.daily_calories == 2250
+    assert plan.weekly_change_kg == 0.5
+    assert plan.warnings and "ambitious gain" in plan.warnings[0]
+
+
+def test_two_pounds_loss_per_week_is_allowed_when_intake_has_room() -> None:
+    saved = profile("lose", 7, target_weight_kg=75 - 2 * 0.45359237)
+    plan = calculate_plan(saved, estimate(2800), TODAY)
+    assert plan.targets.calorie_adjustment == -997
+    assert plan.targets.daily_calories == 1803
+    assert plan.warnings and "ambitious loss" in plan.warnings[0]
+
+
+@pytest.mark.parametrize("goal,target,days", [("lose", 73.9, 7), ("gain", 77, 27)])
+def test_dates_above_the_new_weekly_limits_remain_blocked(goal: str, target: float, days: int) -> None:
+    with pytest.raises(GoalProblem) as error:
+        calculate_plan(profile(goal, days, target_weight_kg=target), estimate(2800), TODAY)
+    assert error.value.detail["code"] == "timeline_too_short"
+    suggested = date.fromisoformat(error.value.detail["suggested_target_date"])
+    assert calculate_plan(profile(goal, (suggested - TODAY).days, target_weight_kg=target), estimate(2800), TODAY)
+
+
+def test_a_faster_loss_goal_still_cannot_cross_the_daily_intake_floor() -> None:
+    with pytest.raises(GoalProblem) as error:
+        calculate_plan(profile("lose", 28, target_weight_kg=73), estimate(1700), TODAY)
+    assert "1,200 kcal minimum" in error.value.detail["message"]
+    suggestion = date.fromisoformat(error.value.detail["suggested_target_date"])
+    plan = calculate_plan(profile("lose", (suggestion - TODAY).days, target_weight_kg=73), estimate(1700), TODAY)
+    assert plan.targets.daily_calories >= 1200
+
+
+@pytest.mark.parametrize("goal,target", [("lose", 60), ("gain", 90)])
+def test_daily_adjustment_helper_defends_its_cap_even_if_a_caller_skips_rate_validation(goal: str, target: float) -> None:
+    with pytest.raises(GoalProblem) as error:
+        calorie_adjustment(profile(goal, 7, target_weight_kg=target), 4000, 7, TODAY)
+    assert error.value.detail["code"] == "calorie_adjustment_too_large"
+
+
+def test_maintain_and_gradual_plans_have_no_ambitious_pace_warning() -> None:
+    assert calculate_plan(profile(), estimate(), TODAY).warnings == []
+    assert calculate_plan(profile("gain", 90, target_weight_kg=76), estimate(), TODAY).warnings == []
+    assert calculate_plan(profile("lose", 90, target_weight_kg=74), estimate(), TODAY).warnings == []

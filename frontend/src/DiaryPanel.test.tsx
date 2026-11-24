@@ -52,7 +52,7 @@ beforeEach(() => {
   stubApiFetch(fetchMock)
 })
 function panel() { return render(<DiaryWorkspace revision={0} onSessionExpired={onSessionExpired} />) }
-async function ready() { return screen.findByRole('heading', { name: 'Food diary.' }) }
+async function ready() { return screen.findByRole('heading', { name: 'Daily progress.' }) }
 async function estimate() {
   fireEvent.change(screen.getByLabelText('Food description'), { target: { value: 'apple' } })
   await userEvent.setup().click(screen.getByRole('button', { name: 'Estimate nutrition' }))
@@ -466,4 +466,33 @@ it('discards the previous account diary and unsaved editor on logout', async () 
   expect(screen.getByText('No food logged for this day yet.')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Edit entry' })).not.toBeInTheDocument()
   expect(screen.getByLabelText('Food description')).toHaveValue('')
+})
+
+it('keeps the date selector with Food diary and shows the actual today beside it', async () => {
+  panel()
+  await ready()
+  const diary = screen.getByRole('region', { name: 'Food diary.' })
+  const control = within(diary).getByLabelText('Diary date')
+  const today = within(diary).getByText(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z')))
+  expect(today).toHaveAttribute('datetime', date)
+  control.focus()
+  change('Diary date', '2020-02-29')
+  await ready()
+  expect(screen.getByLabelText('Diary date')).toBe(control)
+  expect(control).toHaveFocus()
+  expect(control).toHaveValue('2020-02-29')
+  expect(today).toHaveAttribute('datetime', date)
+  await userEvent.setup().click(within(diary).getByRole('button', { name: 'Today' }))
+  expect(control).toHaveValue(date)
+})
+
+it('leaves date navigation usable after an initial diary load failure', async () => {
+  fetchMock.mockResolvedValueOnce(json({}, 403))
+  panel()
+  await screen.findByRole('alert')
+  expect(screen.getByLabelText('Diary date')).toBeEnabled()
+  change('Diary date', '2020-02-29')
+  await ready()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByText('No food logged for this day yet.')).toBeInTheDocument()
 })

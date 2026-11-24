@@ -94,6 +94,7 @@ export function ProfilePanel({
   const { page, navigate } = useWorkspacePage()
   const [attempt, setAttempt] = useState(0)
   const [editing, setEditing] = useState(false)
+  const [targetEdit, setTargetEdit] = useState<{ targetDate?: string } | null>(null)
   const [planRevision, setPlanRevision] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -142,8 +143,16 @@ export function ProfilePanel({
 
   function editProfile() {
     setSaveError('')
+    setTargetEdit(null)
     setEditing(true)
     navigate('profile')
+  }
+
+  function editGoal(targetDate?: string) {
+    editProfile()
+    if (state.status === 'ready' && state.profile?.goal !== 'maintain') {
+      setTargetEdit({ targetDate })
+    }
   }
 
   if (state.status === 'loading')
@@ -174,7 +183,10 @@ export function ProfilePanel({
     )
   const wizard = (
     <OnboardingWizard
+      key={targetEdit ? 'target:' + (targetEdit.targetDate ?? '') : 'profile'}
       profile={state.profile}
+      initialStep={targetEdit ? 'target' : 'goal'}
+      targetDate={targetEdit?.targetDate}
       saving={saving}
       saveError={saveError}
       onSave={(data) => {
@@ -205,7 +217,7 @@ export function ProfilePanel({
           onPlanRequested={() => navigate('plan')} visible={page === 'diary'} />
       </section>
       <section className="workspace-page" aria-label="Plan page" hidden={page !== 'plan'}>
-        <PlanPanel profile={state.profile} onSessionExpired={onSessionExpired} onEdit={editProfile}
+        <PlanPanel profile={state.profile} onSessionExpired={onSessionExpired} onEdit={editGoal} onReviewProfile={editProfile}
           onPlanChanged={() => setPlanRevision((value) => value + 1)} onOpenDiary={() => navigate('diary')}
           visible={page === 'plan'} />
       </section>

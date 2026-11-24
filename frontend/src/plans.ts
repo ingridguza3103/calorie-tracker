@@ -25,20 +25,24 @@ export interface CaloriePlan {
     fiber_g: number
   }
   assumptions: string[]
+  warnings?: string[]
 }
 
 export class PlanError extends AccountError {
   readonly status: number
   readonly suggestedDate: string | null
+  readonly field: string | null
 
   constructor(
     message: string,
     status: number,
     suggestedDate: string | null = null,
+    field: string | null = null,
   ) {
     super(message)
     this.status = status
     this.suggestedDate = suggestedDate
+    this.field = field
   }
 }
 
@@ -79,7 +83,8 @@ function isPlan(value: unknown): value is CaloriePlan {
     positive(value.current_weight_kg) && (value.target_weight_kg === null || positive(value.target_weight_kg)) &&
     dateOrNull(value.target_date) && (value.timeline_days === null || positive(value.timeline_days)) &&
     typeof value.weekly_change_kg === 'number' && Number.isFinite(value.weekly_change_kg) &&
-    validTargets(value.targets) && validMaintenance(value.maintenance) && texts(value.assumptions)
+    validTargets(value.targets) && validMaintenance(value.maintenance) && texts(value.assumptions) &&
+    (value.warnings === undefined || texts(value.warnings))
 }
 
 async function requirePlanSuccess(response: Response): Promise<void> {
@@ -89,7 +94,8 @@ async function requirePlanSuccess(response: Response): Promise<void> {
     const body: unknown = await response.json().catch(() => null)
     if (record(body) && record(body.detail) && typeof body.detail.message === 'string') {
       const suggestion = body.detail.suggested_target_date
-      throw new PlanError(body.detail.message, 422, dateOrNull(suggestion) ? suggestion : null)
+      const field = typeof body.detail.field === 'string' ? body.detail.field : null
+      throw new PlanError(body.detail.message, 422, dateOrNull(suggestion) ? suggestion : null, field)
     }
   }
   const messages: Record<number, string> = {

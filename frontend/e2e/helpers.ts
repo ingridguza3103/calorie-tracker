@@ -45,6 +45,7 @@ export async function onboarding(page: Page, goal: 'Maintain' | 'Gain' | 'Lose' 
   await expect(page.getByRole('link', { name: 'Plan', exact: true })).toHaveAttribute('aria-current', 'page')
   await page.getByRole('link', { name: 'Diary', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Food diary.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Daily progress.' })).toBeVisible()
 }
 export async function dashboard(page: Page) {
   const user = await register(page)

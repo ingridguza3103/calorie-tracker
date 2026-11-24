@@ -229,15 +229,26 @@ function EntryCard({ entry, onChanged, onSessionExpired }: EntryProps) {
   )
 }
 
-function DiaryContent({ date, revision, onSessionExpired, onPlanRequested, visible }: SessionProps & Readonly<{
-  date: string; revision: number; onPlanRequested?: () => void; visible: boolean
+function DiaryDateControls({ date, today, onSelect }: Readonly<{
+  date: string; today: string; onSelect: (date: string) => void
+}>) {
+  return <div className="diary-date-controls">
+    <div className="profile-field"><label htmlFor="diary-date">Diary date</label>
+      <input id="diary-date" type="date" value={date} onChange={(event) => onSelect(event.target.value)} /></div>
+    <div className="diary-current-date"><span>Today</span><time dateTime={today}>{formatDay(today)}</time></div>
+  </div>
+}
+
+function DiaryContent({ date, today, onSelect, onToday, revision, onSessionExpired, onPlanRequested, visible }: SessionProps & Readonly<{
+  date: string; today: string; onSelect: (date: string) => void; onToday: () => void
+  revision: number; onPlanRequested?: () => void; visible: boolean
 }>) {
   const [read, setRead] = useState<{ day: DiaryDay | null; error: string; key: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [locked, setLocked] = useState(false)
-  const key = revision + ':' + attempt
+  const key = date + ':' + revision + ':' + attempt
   const loading = read?.key !== key
-  const day = read?.day ?? null
+  const day = read?.day?.date === date ? read.day : null
   const error = loading ? '' : read?.error ?? ''
   const refresh = useCallback(() => { setAttempt((value) => value + 1) }, [])
   useEffect(() => {
@@ -247,7 +258,7 @@ function DiaryContent({ date, revision, onSessionExpired, onPlanRequested, visib
     }).catch((failure: unknown) => {
       if (controller.signal.aborted) return
       if (failure instanceof SessionExpiredError) onSessionExpired()
-      else setRead((current) => ({ day: current?.day ?? null, error: accountErrorMessage(failure), key }))
+      else setRead((current) => ({ day: current?.day?.date === date ? current.day : null, error: accountErrorMessage(failure), key }))
     })
     return () => controller.abort()
   }, [date, key, onSessionExpired])
@@ -260,16 +271,20 @@ function DiaryContent({ date, revision, onSessionExpired, onPlanRequested, visib
         {day && <DiaryProgress day={day} onPlanRequested={onPlanRequested} />}
       </div>
       <div className="diary-logging-grid">
-      <FoodPanel onSessionExpired={onSessionExpired} locked={locked} visible={visible} renderActions={(estimate) => (
+      <FoodPanel key={date} onSessionExpired={onSessionExpired} locked={locked} visible={visible} renderActions={(estimate) => (
         <AddToDiary key={estimate.id} estimate={estimate} date={date} onSaved={refresh} onLock={setLocked} onSessionExpired={onSessionExpired} />
       )} />
-      {day && <section className="profile-card" aria-labelledby="diary-entries-heading">
-        <div className="profile-summary-header"><h2 id="diary-entries-heading">Food diary.</h2>
-          <button type="button" className="button-secondary" disabled={loading} onClick={refresh}>Refresh diary</button></div>
-        {day.entries.length === 0 ? <p>No food logged for this day yet.</p> : <ul className="diary-entries">
+      <section className="profile-card diary-entries-card" aria-labelledby="diary-entries-heading" aria-busy={loading}>
+        <div className="diary-heading"><h2 id="diary-entries-heading">Food diary.</h2>
+          <DiaryDateControls date={date} today={today} onSelect={onSelect} /></div>
+        <div className="diary-entry-toolbar">
+          {date !== today && <button type="button" className="button-secondary" onClick={onToday}>Today</button>}
+          <button type="button" className="button-secondary" disabled={loading} onClick={refresh}>Refresh diary</button>
+        </div>
+        {day && (day.entries.length === 0 ? <p>No food logged for this day yet.</p> : <ul className="diary-entries">
           {day.entries.map((entry) => <EntryCard key={entry.id + ':' + entry.version} entry={entry} onChanged={refresh} onSessionExpired={onSessionExpired} />)}
-        </ul>}
-      </section>}
+        </ul>)}
+      </section>
       </div>
     </>
   )
@@ -281,13 +296,8 @@ export function DiaryWorkspace({ revision, onSessionExpired, onPlanRequested, vi
   const { selected, today, select, showToday } = useDiaryDate()
   return (
     <section className="diary-workspace" aria-label="Daily food diary">
-      <div className="profile-card diary-date">
-        <div className="profile-field"><label htmlFor="diary-date">Diary date</label>
-          <input id="diary-date" type="date" value={selected} onChange={(event) => select(event.target.value)} /></div>
-        <p>{formatDay(selected)}{selected === today ? ' · Today' : ''}</p>
-        {selected !== today && <button type="button" className="button-secondary" onClick={showToday}>Today</button>}
-      </div>
-      <DiaryContent key={selected} date={selected} revision={revision} onSessionExpired={onSessionExpired} onPlanRequested={onPlanRequested} visible={visible} />
+      <DiaryContent date={selected} today={today} onSelect={select} onToday={showToday} revision={revision}
+        onSessionExpired={onSessionExpired} onPlanRequested={onPlanRequested} visible={visible} />
     </section>
   )
 }
