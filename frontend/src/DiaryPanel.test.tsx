@@ -82,14 +82,20 @@ it('opens the browser local day without making an AI request and shows current t
   expect(screen.getByText(/0% of your current daily target/)).toBeInTheDocument()
   expect(screen.getByText(/2,000 kcal remaining/)).toBeInTheDocument()
   expect(screen.getByText('No food logged for this day yet.')).toBeInTheDocument()
+  for (const name of ['Protein', 'Carbohydrates', 'Fat', 'Fiber']) {
+    expect(screen.getByRole('progressbar', { name: name + ' progress' })).toHaveAttribute('value', '0')
+  }
   expect(aiCalls()).toHaveLength(0)
   expect(localStorage.length).toBe(0)
 })
 it('shows consumed totals above target with a capped progress bar and full percentage', async () => {
-  entries = [entry(date, { servings: 20, totals: { ...apple.food, calories: 2400 } })]
+  entries = [entry(date, { servings: 20, totals: { calories: 2400, protein_g: 200, carbohydrate_g: 300, fat_g: 90, fiber_g: 40 } })]
   panel()
   await ready()
-  expect(screen.getByRole('progressbar')).toHaveAttribute('value', '2000')
+  expect(screen.getByRole('progressbar', { name: 'Daily calorie progress' })).toHaveAttribute('value', '2000')
+  for (const [name, target] of [['Protein', '120'], ['Carbohydrates', '230'], ['Fat', '67'], ['Fiber', '28']]) {
+    expect(screen.getByRole('progressbar', { name: name + ' progress' })).toHaveAttribute('value', target)
+  }
   expect(screen.getByText(/120% of your current daily target/)).toBeInTheDocument()
   expect(screen.getByText('400 kcal above your current target.')).toBeInTheDocument()
   expect(screen.queryByText('1 × the described serving')).not.toBeInTheDocument()
@@ -101,7 +107,7 @@ it('allows diary logging without a calorie plan', async () => {
   withTargets = false
   panel()
   await ready()
-  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  expect(screen.queryByRole('progressbar', { name: 'Daily calorie progress' })).not.toBeInTheDocument()
   expect(screen.getByText(/Create a current calorie plan/)).toBeInTheDocument()
   await estimate()
   await userEvent.setup().click(screen.getByRole('button', { name: 'Add to diary' }))
@@ -393,10 +399,10 @@ it('refreshes targets when a plan is created', async () => {
   withTargets = false
   const view = panel()
   await ready()
-  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  expect(screen.queryByRole('progressbar', { name: 'Daily calorie progress' })).not.toBeInTheDocument()
   withTargets = true
   view.rerender(<DiaryWorkspace revision={1} onSessionExpired={onSessionExpired} />)
-  await screen.findByRole('progressbar')
+  await screen.findByRole('progressbar', { name: 'Daily calorie progress' })
 })
 
 const savedProfile = {
@@ -433,10 +439,13 @@ it('updates diary targets after creating a plan in the signed-in dashboard', asy
   withTargets = false
   authenticatedApp()
   await ready()
-  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-  await userEvent.setup().click(await screen.findByRole('button', { name: 'Create my plan' }))
+  expect(screen.queryByRole('progressbar', { name: 'Daily calorie progress' })).not.toBeInTheDocument()
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('link', { name: 'Plan' }))
+  await user.click(await screen.findByRole('button', { name: 'Create my plan' }))
   await screen.findByRole('heading', { name: 'Your daily plan.' })
-  await screen.findByRole('progressbar')
+  await user.click(screen.getByRole('button', { name: 'Go to diary' }))
+  await screen.findByRole('progressbar', { name: 'Daily calorie progress' })
   expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/diary?'))).toHaveLength(2)
 })
 it('discards the previous account diary and unsaved editor on logout', async () => {

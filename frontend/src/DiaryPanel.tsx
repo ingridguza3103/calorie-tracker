@@ -16,7 +16,7 @@ const nutrients = [
   ['Fat', 'fat_g'], ['Fiber', 'fiber_g'],
 ] as const
 
-function DiaryProgress({ day }: Readonly<{ day: DiaryDay }>) {
+function DiaryProgress({ day, onPlanRequested }: Readonly<{ day: DiaryDay; onPlanRequested?: () => void }>) {
   const target = day.targets
   return (
     <section className="profile-card diary-progress" aria-labelledby="diary-progress-heading">
@@ -30,10 +30,12 @@ function DiaryProgress({ day }: Readonly<{ day: DiaryDay }>) {
         <p>{number.format(Math.abs(day.remaining_calories))} kcal {day.remaining_calories >= 0 ? 'remaining' : 'above your current target'}.</p>
       </div>}
       {!target && <p className="profile-help">Create a current calorie plan to see your progress against a target. You can keep logging food.</p>}
+      {!target && onPlanRequested && <button type="button" className="button-secondary" onClick={onPlanRequested}>Create a plan</button>}
       <dl className="plan-nutrients diary-nutrients">
         {nutrients.map(([label, key]) => <div key={key}>
           <dt>{label}</dt><dd>{number.format(day.totals[key])} <span>g</span></dd>
           {target && <p className="profile-help">of {number.format(target[key])} g</p>}
+          {target && <progress aria-label={label + ' progress'} max={target[key]} value={Math.min(day.totals[key], target[key])} />}
         </div>)}
       </dl>
       <p className="profile-help">Entries belong to the calendar date you choose. Targets use your current plan, including when you view an earlier day.</p>
@@ -227,7 +229,9 @@ function EntryCard({ entry, onChanged, onSessionExpired }: EntryProps) {
   )
 }
 
-function DiaryContent({ date, revision, onSessionExpired }: SessionProps & Readonly<{ date: string; revision: number }>) {
+function DiaryContent({ date, revision, onSessionExpired, onPlanRequested, visible }: SessionProps & Readonly<{
+  date: string; revision: number; onPlanRequested?: () => void; visible: boolean
+}>) {
   const [read, setRead] = useState<{ day: DiaryDay | null; error: string; key: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [locked, setLocked] = useState(false)
@@ -253,9 +257,10 @@ function DiaryContent({ date, revision, onSessionExpired }: SessionProps & Reado
         {loading && <><p role="status">Loading your diary…</p><ConnectionNotice /></>}
         {error && <div className="profile-card"><p role="alert" className="form-error">{error}</p>
           <button type="button" className="button-secondary" onClick={refresh}>Reload diary</button></div>}
-        {day && <DiaryProgress day={day} />}
+        {day && <DiaryProgress day={day} onPlanRequested={onPlanRequested} />}
       </div>
-      <FoodPanel onSessionExpired={onSessionExpired} locked={locked} renderActions={(estimate) => (
+      <div className="diary-logging-grid">
+      <FoodPanel onSessionExpired={onSessionExpired} locked={locked} visible={visible} renderActions={(estimate) => (
         <AddToDiary key={estimate.id} estimate={estimate} date={date} onSaved={refresh} onLock={setLocked} onSessionExpired={onSessionExpired} />
       )} />
       {day && <section className="profile-card" aria-labelledby="diary-entries-heading">
@@ -265,11 +270,14 @@ function DiaryContent({ date, revision, onSessionExpired }: SessionProps & Reado
           {day.entries.map((entry) => <EntryCard key={entry.id + ':' + entry.version} entry={entry} onChanged={refresh} onSessionExpired={onSessionExpired} />)}
         </ul>}
       </section>}
+      </div>
     </>
   )
 }
 
-export function DiaryWorkspace({ revision, onSessionExpired }: SessionProps & Readonly<{ revision: number }>) {
+export function DiaryWorkspace({ revision, onSessionExpired, onPlanRequested, visible = true }: SessionProps & Readonly<{
+  revision: number; onPlanRequested?: () => void; visible?: boolean
+}>) {
   const { selected, today, select, showToday } = useDiaryDate()
   return (
     <section className="diary-workspace" aria-label="Daily food diary">
@@ -279,7 +287,7 @@ export function DiaryWorkspace({ revision, onSessionExpired }: SessionProps & Re
         <p>{formatDay(selected)}{selected === today ? ' · Today' : ''}</p>
         {selected !== today && <button type="button" className="button-secondary" onClick={showToday}>Today</button>}
       </div>
-      <DiaryContent key={selected} date={selected} revision={revision} onSessionExpired={onSessionExpired} />
+      <DiaryContent key={selected} date={selected} revision={revision} onSessionExpired={onSessionExpired} onPlanRequested={onPlanRequested} visible={visible} />
     </section>
   )
 }
