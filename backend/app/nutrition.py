@@ -1,4 +1,4 @@
-"""Deterministic starting targets and conservative limits for automatic plans."""
+"""Deterministic starting targets, pace warnings, and bounded automatic plans."""
 
 import math
 from datetime import date, timedelta
@@ -11,6 +11,11 @@ from app.profiles import ProfileRead
 
 ENERGY_PER_KG = 7700
 MAX_TIMELINE_DAYS = 730
+# Two pounds of loss; half a kilogram of gain. These are app policy limits,
+# not a claim that the fastest permitted pace suits every person.
+MAX_WEEKLY_CHANGE_KG = {"lose": 2 * 0.45359237, "gain": 0.5}
+MAX_DEFICIT = 1000
+MAX_SURPLUS = 750
 
 
 class GoalProblem(Exception):
@@ -45,6 +50,7 @@ class CaloriePlan(BaseModel):
     maintenance: MaintenanceEstimate
     targets: NutrientTargets
     assumptions: list[str]
+    warnings: list[str] = Field(default_factory=list)
 
 
 def suggest_date(today: date, days: float) -> date | None:
@@ -68,13 +74,12 @@ def validate_goal(profile: ProfileRead, today: date) -> int | None:
             field="target_weight_kg",
         )
     change = abs(profile.target_weight_kg - profile.current_weight_kg)
-    weekly_limit = (
-        min(0.9, profile.current_weight_kg * 0.01) if profile.goal == "lose"
-        else min(0.5, profile.current_weight_kg * 0.005)
-    )
+    weekly_limit = MAX_WEEKLY_CHANGE_KG[profile.goal]
     if change * 7 / days > weekly_limit + 1e-9:
         raise GoalProblem(
-            "timeline_too_short", "This goal needs more time. Extend the date or choose a smaller weight change.",
+            "timeline_too_short",
+            f"This is above the planner's {weekly_limit:.2f} kg/week limit. "
+            "Choose a later date or a smaller weight change. A calorie check may require more time.",
             suggested_target_date=suggest_date(today, change * 7 / weekly_limit),
         )
     return days
@@ -91,21 +96,41 @@ def calorie_adjustment(profile: ProfileRead, maintenance: int, days: int | None,
         return 0
     change = profile.target_weight_kg - profile.current_weight_kg
     required = abs(change) * ENERGY_PER_KG / days
-    limit = min(500, maintenance * 0.20)
-    if profile.goal == "lose":
-        limit = min(limit, maintenance - floor)
+    limit = min(MAX_DEFICIT, maintenance - floor) if profile.goal == "lose" else MAX_SURPLUS
     if limit < 1:
         raise GoalProblem(
             "no_calorie_room", "This maintenance estimate leaves no room for an automatic deficit. Review your profile or choose maintain weight.",
             field="profile",
         )
     if required > limit + 1e-9:
+        if profile.goal == "lose" and maintenance - floor < MAX_DEFICIT:
+            message = f"This date would put daily intake below the planner's {floor:,} kcal minimum. "
+        else:
+            kind = "deficit" if profile.goal == "lose" else "surplus"
+            message = f"This date needs a daily {kind} above the planner's {limit:,} kcal limit. "
         raise GoalProblem(
-            "calorie_adjustment_too_large", "This date requires a daily calorie change beyond the automatic planner's limits. Extend the date or choose a smaller change.",
-            suggested_target_date=suggest_date(today, abs(change) * ENERGY_PER_KG / limit),
+            "calorie_adjustment_too_large", message + "Choose a later date or a smaller weight change.",
+            suggested_target_date=suggest_date(today, max(
+                abs(change) * ENERGY_PER_KG / limit,
+                abs(change) * 7 / MAX_WEEKLY_CHANGE_KG[profile.goal],
+            )),
         )
     # Round toward maintenance so rounding never increases the deficit/surplus.
     return math.trunc(change * ENERGY_PER_KG / days)
+
+
+def pace_warnings(goal: str, adjustment: int, weekly_change: float) -> list[str]:
+    if goal == "lose" and (abs(weekly_change) > 0.5 or adjustment < -500):
+        return [
+            "This is an ambitious loss pace with a larger calorie deficit. It may be harder to sustain. "
+            "Consider a later date or a smaller change if it affects your energy or training."
+        ]
+    if goal == "gain" and (weekly_change > 0.25 or adjustment > 500):
+        return [
+            "This is an ambitious gain pace. Scale weight can include fat and water as well as muscle. "
+            "Choose a later date if you prefer a more gradual gain."
+        ]
+    return []
 
 
 def nutrient_targets(calories: int, adjustment: int, weight: float) -> NutrientTargets:
@@ -122,6 +147,7 @@ def nutrient_targets(calories: int, adjustment: int, weight: float) -> NutrientT
 def calculate_plan(profile: ProfileRead, estimate: MaintenanceEstimate, today: date) -> CaloriePlan:
     days = validate_goal(profile, today)
     adjustment = calorie_adjustment(profile, estimate.maintenance_calories, days, today)
+    weekly_change = round(adjustment * 7 / ENERGY_PER_KG, 3)
     assumptions = [
         "These are starting estimates. Review your plan as your weight and routine change.",
         "Protein starts at 1.6 g/kg, within 10-25% of calories. Fat uses 30%; carbohydrates use the remainder.",
@@ -134,8 +160,9 @@ def calculate_plan(profile: ProfileRead, estimate: MaintenanceEstimate, today: d
     return CaloriePlan(
         goal=profile.goal, current_weight_kg=profile.current_weight_kg,
         target_weight_kg=profile.target_weight_kg, target_date=profile.target_date,
-        timeline_days=days, weekly_change_kg=round(adjustment * 7 / ENERGY_PER_KG, 3),
+        timeline_days=days, weekly_change_kg=weekly_change,
         maintenance=estimate,
         targets=nutrient_targets(estimate.maintenance_calories + adjustment, adjustment, profile.current_weight_kg),
         assumptions=assumptions,
+        warnings=pace_warnings(profile.goal, adjustment, weekly_change),
     )

@@ -54,6 +54,10 @@ function PlanResult({ plan, visible }: Readonly<{ plan: CaloriePlan; visible: bo
           {' '}About {number.format(Math.abs(plan.weekly_change_kg))} kg per week, estimated.
         </p>
       )}
+      {plan.warnings && plan.warnings.length > 0 && <div className="plan-warning" role="note" aria-label="Ambitious pace">
+        <h3>Ambitious pace</h3>
+        <ul>{plan.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+      </div>}
       <p className="profile-help">A starting point for your routine. Review these targets as your weight and activity change.</p>
       <details className="plan-details">
         <summary>How this was estimated</summary>
@@ -65,10 +69,11 @@ function PlanResult({ plan, visible }: Readonly<{ plan: CaloriePlan; visible: bo
 }
 
 type PlanPanelProps = Readonly<{
-  profile: Profile; onEdit: () => void; onSessionExpired: () => void
+  profile: Profile; onEdit: (suggestedDate?: string) => void; onSessionExpired: () => void
   onPlanChanged?: () => void
   onOpenDiary?: () => void
   visible?: boolean
+  onReviewProfile?: () => void
 }>
 
 export function PlanPanel(props: PlanPanelProps) {
@@ -76,7 +81,7 @@ export function PlanPanel(props: PlanPanelProps) {
   return <PlanPanelContent key={JSON.stringify(props.profile)} {...props} />
 }
 
-function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged, onOpenDiary, visible = true }: PlanPanelProps) {
+function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged, onOpenDiary, visible = true, onReviewProfile }: PlanPanelProps) {
   const [state, setState] = useState<PlanState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const active = useRef<AbortController | null>(null)
@@ -114,11 +119,15 @@ function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged, on
   if (state.status === 'ready') return (
     <section className="profile-card plan-card" aria-labelledby="plan-heading">
       <PlanResult plan={state.plan} visible={visible} />
-      {onOpenDiary && <button type="button" className="button-primary" onClick={onOpenDiary}>Go to diary</button>}
+      <div className="diary-actions">
+        {onOpenDiary && <button type="button" className="button-primary" onClick={onOpenDiary}>Go to diary</button>}
+        <button type="button" className="button-secondary" onClick={() => onEdit()}>Adjust goal</button>
+      </div>
     </section>
   )
   const blocked = state.status === 'error' && state.error instanceof PlanError && state.error.status === 422
   const suggestion = state.status === 'error' && state.error instanceof PlanError ? state.error.suggestedDate : null
+  const reviewProfile = state.status === 'error' && state.error instanceof PlanError && state.error.field === 'profile'
   let buttonLabel = 'Create my plan'
   if (state.status === 'creating') buttonLabel = 'Creating plan…'
   else if (state.status === 'error' && state.operation === 'load') buttonLabel = 'Retry loading plan'
@@ -131,13 +140,20 @@ function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged, on
       {(state.status === 'loading' || state.status === 'creating') && <ConnectionNotice />}
       {state.status === 'empty' && <>
         <p className="profile-intro">Use your saved goal and weekly activity to calculate your daily calorie and nutrient targets.</p>
+        <p className="profile-help">Plans allow up to about 0.9 kg/week loss or 0.5 kg/week gain. Calorie intake limits may require a slower pace.</p>
         <p className="profile-help">Your activity description, gym frequency and steps are sent to our AI provider when you create a plan.</p>
       </>}
       {state.status === 'error' && <>
         <p className="form-error" role="alert">{accountErrorMessage(state.error)}</p>
-        {suggestion && <p className="profile-intro">Suggested earliest date: <strong>{dateLabel(suggestion)}</strong>. This is an estimate; you can also choose a smaller goal.</p>}
+        {suggestion && <p className="profile-intro">Suggested date to try: <strong>{dateLabel(suggestion)}</strong>. Choose a later date to slow the pace, or reduce the weight change to keep an earlier date. Calorie checks may require more time.</p>}
       </>}
-      {blocked ? <button type="button" className="button-primary" onClick={onEdit}>Adjust goal</button> : (
+      {blocked ? <div className="diary-actions">
+        {suggestion && <button type="button" className="button-primary" onClick={() => onEdit(suggestion)}>Use suggested date</button>}
+        <button type="button" className="button-secondary" onClick={() => {
+          if (reviewProfile && onReviewProfile) onReviewProfile()
+          else onEdit()
+        }}>{reviewProfile ? 'Review profile' : 'Adjust goal'}</button>
+      </div> : (
         <button type="button" className="button-primary"
           disabled={state.status === 'loading' || state.status === 'creating'}
           onClick={() => {

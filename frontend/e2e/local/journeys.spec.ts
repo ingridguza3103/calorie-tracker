@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { account, addApple, dashboard, expectFitsScreen, login, onboarding, register } from '../helpers'
+import { account, addApple, dashboard, expectFitsScreen, futureDate, login, onboarding, register } from '../helpers'
 
 for (const goal of ['Maintain', 'Gain', 'Lose'] as const) {
   test(goal + ': onboarding, plan, diary, reload and sign-in retain saved data', async ({ page, context }) => {
@@ -252,4 +252,64 @@ test('separate pages preserve drafts and support direct links and browser histor
   await expect(page.getByRole('link', { name: 'Profile', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { name: 'Your profile is ready.' })).toBeVisible()
   await expectFitsScreen(page)
+})
+
+test('diary controls stay with Food diary and align the current date beside the selector', async ({ page }) => {
+  await dashboard(page)
+  const diary = page.getByRole('region', { name: 'Food diary.', exact: true })
+  const selector = diary.getByLabel('Diary date', { exact: true })
+  const today = diary.locator('time')
+  const initial = await selector.inputValue()
+  await expect(today).toHaveAttribute('datetime', initial)
+  await selector.fill('2020-02-29')
+  await expect(selector).toBeFocused()
+  await expect(today).toHaveAttribute('datetime', initial)
+  await expectFitsScreen(page)
+  const inputBox = await selector.boundingBox()
+  const todayBox = await today.boundingBox()
+  expect(inputBox).not.toBeNull()
+  expect(todayBox).not.toBeNull()
+  expect(Math.abs(inputBox!.y + inputBox!.height / 2 - todayBox!.y - todayBox!.height / 2)).toBeLessThanOrEqual(2)
+  await diary.getByRole('button', { name: 'Today', exact: true }).click()
+  await expect(selector).toHaveValue(initial)
+})
+
+test('two kilograms gain over four weeks saves a usable plan with pace advice', async ({ page }) => {
+  await register(page)
+  await onboarding(page, 'Gain')
+  await page.getByRole('link', { name: 'Plan', exact: true }).click()
+  await page.getByRole('button', { name: 'Create my plan', exact: true }).click()
+  await page.getByRole('button', { name: 'Adjust goal', exact: true }).click()
+  await expect(page.getByLabel('Target weight (kg)', { exact: true })).toBeVisible()
+  await page.getByLabel('Target weight (kg)', { exact: true }).fill('77')
+  await page.getByLabel('Target date', { exact: true }).fill(futureDate(28))
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Create my plan', exact: true }).click()
+  await expect(page.getByRole('note', { name: 'Ambitious pace' })).toBeVisible()
+  const saved = await (await page.request.get('/api/plan')).json()
+  expect(saved.targets.calorie_adjustment).toBe(550)
+  expect(saved.weekly_change_kg).toBe(0.5)
+  await expectFitsScreen(page)
+})
+
+test('a suggested date opens for review and only becomes saved after confirmation', async ({ page }) => {
+  await register(page)
+  await onboarding(page, 'Gain')
+  await page.getByRole('link', { name: 'Profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit profile', exact: true }).click()
+  await page.getByRole('button', { name: /Continue/ }).click()
+  await page.getByRole('button', { name: /Continue/ }).click()
+  await page.getByLabel('Target weight (kg)', { exact: true }).fill('77')
+  await page.getByLabel('Target date', { exact: true }).fill(futureDate(7))
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Create my plan', exact: true }).click()
+  await page.getByRole('button', { name: 'Use suggested date', exact: true }).click()
+  const suggested = await page.getByLabel('Target date', { exact: true }).inputValue()
+  expect(suggested).toBe(futureDate(28))
+  const before = await (await page.request.get('/api/profile')).json()
+  expect(before.target_date).toBe(futureDate(7))
+  await expectFitsScreen(page)
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Create my plan', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Your daily plan.' })).toBeVisible()
 })

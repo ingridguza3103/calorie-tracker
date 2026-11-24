@@ -120,9 +120,7 @@ describe('Onboarding', () => {
     await user.click(await screen.findByRole('link', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Create my plan' }))
     await user.click(await screen.findByRole('button', { name: 'Adjust goal' }))
-    expect(screen.getByRole('radio', { name: /^Lose weight/ })).toBeChecked()
-    await user.click(screen.getByRole('button', { name: /continue/i }))
-    await user.click(screen.getByRole('button', { name: /continue/i }))
+    expect(screen.getByRole('heading', { name: 'Where would you like to get?' })).toBeInTheDocument()
     expect(screen.getByLabelText('Target weight (kg)')).toHaveValue(70)
     fireEvent.change(screen.getByLabelText('Target date'), { target: { value: futureDate(150) } })
     await user.click(screen.getByRole('button', { name: /save profile/i }))
@@ -690,4 +688,42 @@ it('keeps a late food estimate on its diary page without moving focus from the p
   expect(screen.queryByRole('heading', { name: 'Medium apple' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('link', { name: 'Diary' }))
   expect(await screen.findByRole('heading', { name: 'Medium apple' })).toHaveFocus()
+})
+
+it('prefills a suggested date for direct editing, permits an earlier draft, and preserves body details', async () => {
+  saved = { ...stored, goal: 'gain', target_weight_kg: 77, target_date: futureDate(7) }
+  const original = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, options) => {
+    if (url === '/api/plan' && options?.method === 'POST') return Promise.resolve(json({ detail: {
+      message: 'This goal needs more time.', suggested_target_date: futureDate(60), field: 'target_date',
+    } }, 422))
+    return original(url, options)
+  })
+  render(<App />)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('link', { name: 'Plan' }))
+  await user.click(await screen.findByRole('button', { name: 'Create my plan' }))
+  await user.click(await screen.findByRole('button', { name: 'Use suggested date' }))
+  expect(screen.getByLabelText('Target date')).toHaveValue(futureDate(60))
+  expect(profileCalls()).toHaveLength(0)
+  fireEvent.change(screen.getByLabelText('Target date'), { target: { value: futureDate(28) } })
+  await user.click(screen.getByRole('button', { name: 'Save profile' }))
+  await screen.findByRole('button', { name: 'Create my plan' })
+  expect(saved).toMatchObject({ ...input, goal: 'gain', target_weight_kg: 77, target_date: futureDate(28) })
+})
+
+it('opens the full goal step when adjusting a maintain profile', async () => {
+  saved = stored
+  const original = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, options) => {
+    if (url === '/api/plan' && options?.method === 'POST') return Promise.resolve(json({ detail: { message: 'Review this goal.' } }, 422))
+    return original(url, options)
+  })
+  render(<App />)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('link', { name: 'Plan' }))
+  await user.click(await screen.findByRole('button', { name: 'Create my plan' }))
+  await user.click(await screen.findByRole('button', { name: 'Adjust goal' }))
+  expect(screen.getByRole('radio', { name: /^Maintain weight/ })).toBeChecked()
+  expect(screen.getByText('Step 1 of 2')).toBeInTheDocument()
 })

@@ -13,7 +13,7 @@ from app.auth import DbSession, require_same_origin
 from app.groq_client import GroqClient
 from app.maintenance import EstimateRequest, estimate_for_profile, get_groq_client
 from app.models import NutritionPlan, UserProfile
-from app.nutrition import CaloriePlan, GoalProblem, calculate_plan, validate_goal
+from app.nutrition import CaloriePlan, GoalProblem, calculate_plan, pace_warnings, validate_goal
 from app.profiles import CurrentUser, ProfileRead, ProfileWrite, today_utc
 
 router = APIRouter(prefix="/api/plan", tags=["Calorie plan"])
@@ -31,7 +31,11 @@ def read_saved_plan(record: NutritionPlan | None, fingerprint: str) -> CaloriePl
     plan = CaloriePlan.model_validate(record.payload)
     if plan.target_date is not None and plan.target_date <= today_utc():
         return None
-    return plan
+    # Older saved payloads have no warnings. Derive current wording locally;
+    # keeping a valid saved plan must not spend another provider request.
+    return plan.model_copy(update={"warnings": pace_warnings(
+        plan.goal, plan.targets.calorie_adjustment, plan.weekly_change_kg,
+    )})
 
 
 @dataclass(frozen=True)

@@ -125,6 +125,8 @@ interface WizardProps {
   saveError: string
   onSave: (data: ProfileInput) => void
   onCancel: () => void
+  initialStep?: 'goal' | 'target'
+  targetDate?: string
 }
 
 export function OnboardingWizard({
@@ -133,9 +135,13 @@ export function OnboardingWizard({
   saveError,
   onSave,
   onCancel,
+  initialStep = 'goal',
+  targetDate,
 }: Readonly<WizardProps>) {
-  const [draft, setDraft] = useState(() => initialDraft(profile))
-  const [step, setStep] = useState<Step>('goal')
+  const [draft, setDraft] = useState(() => ({ ...initialDraft(profile),
+    ...(targetDate ? { target_date: targetDate } : {}),
+  }))
+  const [step, setStep] = useState<Step>(() => profile && profile.goal !== 'maintain' ? initialStep : 'goal')
   const [errors, setErrors] = useState<Errors>({})
   const [minimumDate] = useState(() => {
     const tomorrow = new Date()

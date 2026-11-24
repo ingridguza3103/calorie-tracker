@@ -111,7 +111,7 @@ it('explains an infeasible goal, suggests a date, and opens profile editing', as
   const user = userEvent.setup()
   await user.click(screen.getByRole('button', { name: 'Create my plan' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('This goal needs more time.')
-  expect(screen.getByText(/Suggested earliest date/)).toBeInTheDocument()
+  expect(screen.getByText(/Suggested date to try/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Adjust goal' }))
   expect(onEdit).toHaveBeenCalledTimes(1)
 })
@@ -122,7 +122,7 @@ it.each([null, 'not-a-date', '2027-02-31'])('handles a blocked goal without a va
   fetchMock.mockResolvedValueOnce(json({ detail: { message: 'Review this goal.', suggested_target_date: suggestion } }, 422))
   await userEvent.setup().click(screen.getByRole('button', { name: 'Create my plan' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Review this goal.')
-  expect(screen.queryByText(/Suggested earliest date/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Suggested date to try/)).not.toBeInTheDocument()
 })
 
 it.each([
@@ -176,7 +176,8 @@ it.each([
   { ...plan(), targets: null }, { ...plan(), targets: { ...plan().targets, protein_g: 'wrong' } },
   { ...plan(), maintenance: null }, { ...plan(), maintenance: { ...plan().maintenance, activity: null } },
   { ...plan(), target_date: '2027-99-99' }, { ...plan(), target_weight_kg: '70' },
-  { ...plan(), assumptions: [false] },
+  { ...plan(), assumptions: [false] }, { ...plan(), warnings: [false] },
+  { ...plan(), warnings: 'wrong' }, { ...plan(), warnings: null },
 ])('rejects a malformed plan response: %j', async (body) => {
   fetchMock.mockResolvedValueOnce(json(body))
   panel()
@@ -237,4 +238,34 @@ it('clears a displayed plan when the profile changes and does not create another
   expect(screen.queryByRole('heading', { name: 'Your daily plan.' })).not.toBeInTheDocument()
   await screen.findByRole('button', { name: 'Create my plan' })
   expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
+})
+
+it('shows ambitious-pace advice while allowing the saved plan and its goal editor', async () => {
+  fetchMock.mockResolvedValueOnce(json({ ...plan('gain'), warnings: ['This faster gain may be harder to sustain.'] }))
+  panel()
+  expect(await screen.findByRole('note', { name: 'Ambitious pace' })).toHaveTextContent('This faster gain')
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Adjust goal' }))
+  expect(onEdit).toHaveBeenCalledWith()
+})
+
+it('opens the suggested date in the goal editor without saving it automatically', async () => {
+  panel()
+  await screen.findByRole('button', { name: 'Create my plan' })
+  fetchMock.mockResolvedValueOnce(json({ detail: {
+    message: 'This goal needs more time.', suggested_target_date: '2027-04-15', field: 'target_date',
+  } }, 422))
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Create my plan' }))
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'Use suggested date' }))
+  expect(onEdit).toHaveBeenCalledWith('2027-04-15')
+  expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+})
+
+it.each([false, true])('routes body/activity errors to profile review (dedicated callback: %s)', async (dedicated) => {
+  const review = vi.fn()
+  render(<PlanPanel profile={profile} onEdit={onEdit} onSessionExpired={onSessionExpired} onReviewProfile={dedicated ? review : undefined} />)
+  await screen.findByRole('button', { name: 'Create my plan' })
+  fetchMock.mockResolvedValueOnce(json({ detail: { message: 'Review your body details.', field: 'profile' } }, 422))
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Create my plan' }))
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'Review profile' }))
+  expect(dedicated ? review : onEdit).toHaveBeenCalledTimes(1)
 })
