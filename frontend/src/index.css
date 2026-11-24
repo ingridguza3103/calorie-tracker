@@ -1135,6 +1135,7 @@ form > .button-primary {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end;
   gap: 12px; flex: 1 1 260px; min-width: 0; max-width: 320px;
 }
+.diary-date-controls > .profile-field { margin-bottom: 0; }
 .diary-current-date { display: grid; gap: 6px; min-width: 0; }
 .diary-current-date > span { font-size: 12px; font-weight: 600; }
 .diary-current-date time { display: flex; align-items: center; min-height: 44px; font-size: 13px; }
