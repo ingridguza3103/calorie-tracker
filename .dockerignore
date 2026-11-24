@@ -13,3 +13,5 @@
 **/.pytest_cache
 *.zip
 *.patch
+**/playwright-report
+**/test-results

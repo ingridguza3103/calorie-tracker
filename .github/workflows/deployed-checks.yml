@@ -1,0 +1,48 @@
+name: Deployed checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: Calorie Tracker HTTPS origin
+        required: true
+        default: https://calorie-tracker-e6b4.onrender.com
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployed-checks
+  cancel-in-progress: false
+
+jobs:
+  deployed:
+    name: Read-only Render checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      E2E_BASE_URL: ${{ inputs.origin }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci --ignore-scripts
+
+      - name: Install browser engines
+        working-directory: frontend
+        run: npx --no-install playwright install --with-deps chromium webkit
+
+      - name: Verify deployed site
+        run: npm --prefix frontend run test:deployed

@@ -664,6 +664,118 @@ coverage script enforces at least 80% combined backend/frontend line and branch 
 Migration files are outside application coverage and remain available for
 static analysis.
 
+## Browser journeys and release checks
+
+See [the verification checkpoint](docs/release-checks.md) for the live desktop
+review and the remaining browser/device checks.
+
+The browser suite runs the compiled frontend and real FastAPI endpoints against
+the existing local Docker PostgreSQL database. Only the Groq transport is
+replaced with deterministic activity/apple responses. It does not consume AI
+quota or use Neon. The production entry point has no test mode or test routes.
+
+### Run desktop and phone checks locally
+
+Start the existing database and activate the backend environment. Stop any
+other test server using port 18002; the normal Vite/API ports remain available.
+
+```bash
+source backend/.venv/bin/activate
+docker compose up -d --wait --wait-timeout 60 db
+npm --prefix frontend ci --ignore-scripts
+npm --prefix frontend run build
+(cd frontend && npx --no-install playwright install --with-deps chromium webkit)
+npm --prefix frontend run test:e2e
+```
+
+The first browser installation also installs the required Linux libraries.
+The test server applies the existing migrations. It forces local connection
+URLs and verifies that the resulting database host is loopback. It uses the
+existing local password and other Docker settings from the root configuration.
+
+The suite contains 14 scenarios in each of three browser projects:
+
+| Project | Engine and viewport |
+| --- | --- |
+| Desktop | Chromium, 1366 × 900 |
+| Small Android | Chromium with touch emulation, 360 × 800 |
+| iPhone 14 Pro Max | WebKit with iPhone device emulation |
+
+Scenarios cover maintain/gain/lose onboarding, plan creation, food logging,
+refresh and re-login persistence, editing servings, moving dates, deletion,
+two-account isolation through the real API, lost-save reply retries, local
+midnight, theme persistence, and controls fitting the viewport. Failure tests
+simulate a waking HTML page, slow replies, transient/network failures,
+persistent API failures, AI quota errors, and session expiry.
+
+Browser emulation checks layout and interaction; test a physical phone before
+a release as well. The cold-start scenarios simulate failures without
+deliberately stopping Render or Neon.
+
+Each test gets a fresh browser context and unique generated E2E credentials.
+On normal shutdown, the local server deletes only the exact E2E account IDs
+it observed creating, with cascading cleanup of their related data. Existing
+accounts remain untouched. A forced process kill may leave temporary E2E rows.
+Do not use this harness as a hosted service; it binds to loopback and its
+fixture responses are only for this suite.
+
+Run one project while developing, or open the local report after a run:
+
+```bash
+npm --prefix frontend run test:e2e -- --project=desktop
+(cd frontend && npx --no-install playwright show-report)
+```
+
+CI runs all three projects before the coverage/SonarQube gate. Browser specs
+and configuration are excluded from application coverage; the existing 80%
+combined line/branch requirement remains in force. Browser reports, session
+state, videos, and screenshots are not committed. Traces and recordings are
+disabled; generated HTML reports remain local.
+
+### Read-only deployed checks
+
+The deployed checks default to the Calorie Tracker Render origin. Run them
+after Render finishes deploying:
+
+```bash
+npm --prefix frontend run test:deployed
+```
+
+Alternatively, after merging this change, open **Actions → Deployed checks →
+Run workflow**. The current Render origin is prefilled; override it only for
+another intended deployment. This workflow is manual, so it does not
+race Render's deployment after the regular CI job.
+
+The default target is https://calorie-tracker-e6b4.onrender.com/. To check
+a different HTTPS origin locally, set `E2E_BASE_URL` for that command.
+
+These checks allow up to 120 seconds for readiness, inspect the actual
+deployed page on all three browser projects, check theme persistence and
+viewport fit, verify API health, and confirm anonymous access to private APIs
+returns 401 with no-store caching. They create no accounts, change no saved
+records, and make no Groq requests. They do not establish authenticated live
+journey or nutrition accuracy.
+
+Before calling the release verified, use two dedicated test accounts on the
+actual Render URL and a real phone:
+
+1. Register account A, complete onboarding, create a plan, and estimate/log a
+   food using the configured Groq model.
+2. Reload, edit its amount and date, return to the chosen day, and confirm its
+   totals persist. Delete it and confirm it stays deleted after another reload.
+3. Log out and sign into account B. Confirm A's profile, entries, and drafts are
+   absent. Sign back into A and confirm its saved data is still present.
+4. Check the login, target-date field, diary-date field, and entry editor in
+   both themes on the phone. Confirm controls fit and the keyboard is usable.
+5. After the services have naturally idled, open the site again and confirm it
+   recovers. The read-only probe can wake them; run the cold-start observation
+   before that probe when checking a genuinely idle deployment.
+
+Playwright references: [web server](https://playwright.dev/docs/test-webserver),
+[device emulation](https://playwright.dev/docs/emulation), and
+[network mocking](https://playwright.dev/docs/mock).
+
+
 ## Render deployment and CD
 
 The root `Dockerfile` builds React and packages its output with FastAPI in one
