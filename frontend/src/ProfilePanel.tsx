@@ -4,6 +4,7 @@ import { OnboardingWizard } from './OnboardingWizard'
 import { ConnectionNotice } from './ConnectionNotice'
 import { PlanPanel } from './PlanPanel'
 import { DiaryWorkspace } from './DiaryPanel'
+import { currentWorkspacePage, useWorkspacePage } from './workspacePage'
 import {
   genderLabels,
   goalLabels,
@@ -21,11 +22,12 @@ type ProfileState =
 function ProfileSummary({
   profile,
   onEdit,
-}: Readonly<{ profile: Profile; onEdit: () => void }>) {
+  active,
+}: Readonly<{ profile: Profile; onEdit: () => void; active: boolean }>) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
-    heading.current?.focus()
-  }, [])
+    if (active) heading.current?.focus()
+  }, [active])
   const stats = [
     ['Age', `${profile.age} years`],
     ['Height', `${profile.height_cm} cm`],
@@ -89,6 +91,7 @@ export function ProfilePanel({
   onSessionExpired,
 }: Readonly<{ onSessionExpired: () => void }>) {
   const [state, setState] = useState<ProfileState>({ status: 'loading' })
+  const { page, navigate } = useWorkspacePage()
   const [attempt, setAttempt] = useState(0)
   const [editing, setEditing] = useState(false)
   const [planRevision, setPlanRevision] = useState(0)
@@ -114,6 +117,7 @@ export function ProfilePanel({
   }, [attempt, onSessionExpired])
 
   async function save(data: ProfileInput) {
+    const firstSetup = state.status === 'ready' && state.profile === null
     setSaving(true)
     setSaveError('')
     const controller = new AbortController()
@@ -123,6 +127,8 @@ export function ProfilePanel({
       if (!controller.signal.aborted) {
         setState({ status: 'ready', profile })
         setEditing(false)
+        setPlanRevision((value) => value + 1)
+        if (firstSetup || currentWorkspacePage() === 'profile') navigate('plan')
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -137,6 +143,7 @@ export function ProfilePanel({
   function editProfile() {
     setSaveError('')
     setEditing(true)
+    navigate('profile')
   }
 
   if (state.status === 'loading')
@@ -165,20 +172,7 @@ export function ProfilePanel({
         </button>
       </section>
     )
-  if (state.profile && !editing)
-    return (
-      <div className="plan-workspace">
-        <PlanPanel
-          profile={state.profile}
-          onSessionExpired={onSessionExpired}
-          onEdit={editProfile}
-          onPlanChanged={() => setPlanRevision((value) => value + 1)}
-        />
-        <DiaryWorkspace revision={planRevision} onSessionExpired={onSessionExpired} />
-        <ProfileSummary profile={state.profile} onEdit={editProfile} />
-      </div>
-    )
-  return (
+  const wizard = (
     <OnboardingWizard
       profile={state.profile}
       saving={saving}
@@ -191,5 +185,33 @@ export function ProfilePanel({
         setEditing(false)
       }}
     />
+  )
+  if (!state.profile) return wizard
+  return (
+    <div className="plan-workspace">
+      <nav className="workspace-navigation" aria-label="Main navigation">
+        {(['diary', 'plan', 'profile'] as const).map((item) => (
+          <a key={item} href={'#' + item} aria-current={page === item ? 'page' : undefined}
+            aria-disabled={saving || undefined} onClick={(event) => {
+              event.preventDefault()
+              if (!saving) navigate(item)
+            }}>
+            {{ diary: 'Diary', plan: 'Plan', profile: 'Profile' }[item]}
+          </a>
+        ))}
+      </nav>
+      <section className="workspace-page" aria-label="Diary page" hidden={page !== 'diary'}>
+        <DiaryWorkspace revision={planRevision} onSessionExpired={onSessionExpired}
+          onPlanRequested={() => navigate('plan')} visible={page === 'diary'} />
+      </section>
+      <section className="workspace-page" aria-label="Plan page" hidden={page !== 'plan'}>
+        <PlanPanel profile={state.profile} onSessionExpired={onSessionExpired} onEdit={editProfile}
+          onPlanChanged={() => setPlanRevision((value) => value + 1)} onOpenDiary={() => navigate('diary')}
+          visible={page === 'plan'} />
+      </section>
+      <section className="workspace-page" aria-label="Profile page" hidden={page !== 'profile'}>
+        {editing ? wizard : <ProfileSummary profile={state.profile} onEdit={editProfile} active={page === 'profile'} />}
+      </section>
+    </div>
   )
 }

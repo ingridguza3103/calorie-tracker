@@ -42,7 +42,8 @@ export async function onboarding(page: Page, goal: 'Maintain' | 'Gain' | 'Lose' 
     await expectFitsScreen(page)
   }
   await page.getByRole('button', { name: /Save/ }).click()
-  await expect(page.getByRole('heading', { name: 'Your profile is ready.' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Plan', exact: true })).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('link', { name: 'Diary', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Food diary.' })).toBeVisible()
 }
 export async function dashboard(page: Page) {

@@ -1105,3 +1105,27 @@ form > .button-primary {
   .diary-edit-fields { grid-template-columns: minmax(0, 1fr); }
   .diary-actions > button { flex: 1 1 120px; }
 }
+
+/* Hash pages retain in-memory drafts while showing only the selected page. */
+.workspace-page[hidden] { display: none; }
+.workspace-navigation {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px; padding: 6px; background: var(--wash);
+  border: 1px solid var(--line); border-radius: 14px;
+}
+.workspace-navigation a {
+  display: flex; justify-content: center; align-items: center;
+  min-height: 44px; padding: 9px 12px; border-radius: 10px;
+  color: var(--text); text-decoration: none; font-size: 14px; font-weight: 650;
+}
+.workspace-navigation a[aria-current='page'] { background: var(--pink); color: var(--charcoal); }
+.workspace-navigation a:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.workspace-navigation a[aria-disabled='true'] { opacity: 0.6; cursor: wait; }
+.diary-logging-grid { display: grid; gap: 20px; min-width: 0; align-items: start; }
+.diary-nutrients dt { font-size: 12px; color: var(--subtle); }
+.diary-nutrients dd { margin: 7px 0 0; font-size: 18px; font-weight: 650; overflow-wrap: anywhere; }
+.diary-nutrients progress { display: block; width: 100%; height: 6px; accent-color: var(--pink); }
+@media (min-width: 1000px) {
+  .workspace-layout { max-width: 1060px; }
+  .diary-logging-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -18,9 +18,9 @@ function dateLabel(date: string): string {
     .format(new Date(`${date}T00:00:00Z`))
 }
 
-function PlanResult({ plan }: Readonly<{ plan: CaloriePlan }>) {
+function PlanResult({ plan, visible }: Readonly<{ plan: CaloriePlan; visible: boolean }>) {
   const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => { heading.current?.focus() }, [])
+  useEffect(() => { if (visible) heading.current?.focus() }, [visible])
   const nutrients = [
     ['Protein', plan.targets.protein_g], ['Carbohydrates', plan.targets.carbohydrate_g],
     ['Fat', plan.targets.fat_g], ['Fiber', plan.targets.fiber_g],
@@ -67,6 +67,8 @@ function PlanResult({ plan }: Readonly<{ plan: CaloriePlan }>) {
 type PlanPanelProps = Readonly<{
   profile: Profile; onEdit: () => void; onSessionExpired: () => void
   onPlanChanged?: () => void
+  onOpenDiary?: () => void
+  visible?: boolean
 }>
 
 export function PlanPanel(props: PlanPanelProps) {
@@ -74,7 +76,7 @@ export function PlanPanel(props: PlanPanelProps) {
   return <PlanPanelContent key={JSON.stringify(props.profile)} {...props} />
 }
 
-function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged }: PlanPanelProps) {
+function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged, onOpenDiary, visible = true }: PlanPanelProps) {
   const [state, setState] = useState<PlanState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const active = useRef<AbortController | null>(null)
@@ -110,7 +112,10 @@ function PlanPanelContent({ profile, onEdit, onSessionExpired, onPlanChanged }: 
   }
 
   if (state.status === 'ready') return (
-    <section className="profile-card plan-card" aria-labelledby="plan-heading"><PlanResult plan={state.plan} /></section>
+    <section className="profile-card plan-card" aria-labelledby="plan-heading">
+      <PlanResult plan={state.plan} visible={visible} />
+      {onOpenDiary && <button type="button" className="button-primary" onClick={onOpenDiary}>Go to diary</button>}
+    </section>
   )
   const blocked = state.status === 'error' && state.error instanceof PlanError && state.error.status === 422
   const suggestion = state.status === 'error' && state.error instanceof PlanError ? state.error.suggestedDate : null

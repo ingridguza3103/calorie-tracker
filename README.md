@@ -41,6 +41,16 @@ npm --prefix frontend run dev
 Open http://127.0.0.1:5174 for the frontend and
 http://127.0.0.1:8001/docs for the API documentation.
 
+## Your workspace
+
+New accounts complete the profile wizard first. Saving the profile opens the
+Plan page, where creating a plan is an explicit action. Returning accounts open
+the Diary by default: daily calorie and macro progress, food logging, and entries.
+Use **Plan** for targets and their assumptions, and **Profile** to review or edit
+your details. The links `/#diary`, `/#plan`, and `/#profile` work on Render without
+additional server routes. Tab switches retain in-memory drafts and the selected
+diary date; logout clears account state. Reload restores saved data, not drafts.
+
 ## Database changes
 
 Alembic uses the application's database by default and the direct connection
@@ -252,8 +262,8 @@ only the first two steps. Inline checks match the API's input limits, and the
 wizard keeps entered values when moving back and forth. A failed save preserves
 the draft so it can be corrected or retried.
 
-Successful saves show a profile summary. Returning users load their saved
-profile from the API and can choose **Edit profile** to change it; **Cancel**
+Saving the initial profile opens **Plan**. Returning users can review their saved
+details on **Profile** and choose **Edit profile** to change them; **Cancel**
 discards those edits. Unsaved drafts stay in memory and are discarded on reload
 or logout. Profile data is not stored in localStorage. An expired login session
 returns the user to the login form.
@@ -471,7 +481,7 @@ app choices rather than claims that every value is a universal clinical limit.
 
 ## Food nutrition from text
 
-After saving a profile, use **What's on your plate?** to describe a food or meal
+After onboarding, open **Diary** and use **What's on your plate?** to describe a food or meal
 and choose **Estimate nutrition**. The preview shows one whole-number calorie
 estimate, protein/carbohydrate/fat/fiber grams, edible serving weight, and the
 serving/cooking assumptions used. Example buttons fill the text without sending
@@ -693,7 +703,7 @@ The test server applies the existing migrations. It forces local connection
 URLs and verifies that the resulting database host is loopback. It uses the
 existing local password and other Docker settings from the root configuration.
 
-The suite contains 14 scenarios in each of three browser projects:
+The suite contains 15 scenarios in each of three browser projects:
 
 | Project | Engine and viewport |
 | --- | --- |

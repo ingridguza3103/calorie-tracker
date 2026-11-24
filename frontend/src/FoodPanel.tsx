@@ -22,9 +22,9 @@ function Assumptions({ title, notes }: Readonly<{ title: string; notes: string[]
   )
 }
 
-function FoodResult({ estimate }: Readonly<{ estimate: FoodEstimate }>) {
+function FoodResult({ estimate, visible }: Readonly<{ estimate: FoodEstimate; visible: boolean }>) {
   const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => { heading.current?.focus() }, [])
+  useEffect(() => { if (visible) heading.current?.focus() }, [visible])
   const { food } = estimate
   const nutrients = [
     ['Protein', food.protein_g], ['Carbohydrates', food.carbohydrate_g],
@@ -51,9 +51,10 @@ function FoodResult({ estimate }: Readonly<{ estimate: FoodEstimate }>) {
   )
 }
 
-export function FoodPanel({ onSessionExpired, locked = false, renderActions }: Readonly<{
+export function FoodPanel({ onSessionExpired, locked = false, renderActions, visible = true }: Readonly<{
   onSessionExpired: () => void
   locked?: boolean
+  visible?: boolean
   renderActions?: (estimate: FoodEstimate) => ReactNode
 }>) {
   const [description, setDescription] = useState('')
@@ -128,7 +129,7 @@ export function FoodPanel({ onSessionExpired, locked = false, renderActions }: R
       <p className="profile-help">Your food description is sent to our AI provider when you request an estimate.</p>
       {busy && <><p role="status">Estimating your food…</p><ConnectionNotice /></>}
       {error && <p role="alert" className="form-error">{error}</p>}
-      {result && <FoodResult estimate={result} />}
+      {result && <FoodResult estimate={result} visible={visible} />}
       {result && renderActions?.(result)}
     </section>
   )

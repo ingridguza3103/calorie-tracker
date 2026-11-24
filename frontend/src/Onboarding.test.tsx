@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { diaryDay } from './test/diaryFixtures'
+import { apple, diaryDay } from './test/diaryFixtures'
 import { goalLabels } from './profiles'
 import type { Goal, Profile, ProfileInput } from './profiles'
 
@@ -66,6 +66,16 @@ async function fillDetails(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Average daily steps'), '6000')
 }
 
+async function openProfile() {
+  await userEvent.setup().click(await screen.findByRole('link', { name: 'Profile' }))
+  return screen.findByRole('heading', { name: 'Your profile is ready.' })
+}
+
+async function editProfileButton() {
+  await openProfile()
+  return screen.findByRole('button', { name: 'Edit profile' })
+}
+
 function profileCalls() {
   return fetchMock.mock.calls.filter(
     ([url, options]) => url === '/api/profile' && options?.method === 'PUT',
@@ -107,6 +117,7 @@ describe('Onboarding', () => {
     })
     render(<App />)
     const user = userEvent.setup()
+    await user.click(await screen.findByRole('link', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Create my plan' }))
     await user.click(await screen.findByRole('button', { name: 'Adjust goal' }))
     expect(screen.getByRole('radio', { name: /^Lose weight/ })).toBeChecked()
@@ -146,7 +157,7 @@ describe('Onboarding', () => {
     ).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /save profile/i }))
     expect(
-      await screen.findByRole('heading', { name: 'Your profile is ready.' }),
+      await openProfile(),
     ).toBeInTheDocument()
     expect(profileCalls()).toHaveLength(1)
     expect(profileCalls()[0]).toEqual([
@@ -187,7 +198,7 @@ describe('Onboarding', () => {
         futureDate(1),
       )
       await user.click(screen.getByRole('button', { name: /save profile/i }))
-      await screen.findByRole('heading', { name: 'Your profile is ready.' })
+      await openProfile()
       expect(saved).toMatchObject({
         ...input,
         goal,
@@ -215,7 +226,7 @@ describe('Onboarding', () => {
       '  Desk work and evening walks.  ',
     )
     await user.click(screen.getByRole('button', { name: /save profile/i }))
-    await screen.findByRole('heading', { name: 'Your profile is ready.' })
+    await openProfile()
     expect(saved).toMatchObject({
       goal: 'maintain',
       target_weight_kg: null,
@@ -242,7 +253,7 @@ describe('Onboarding', () => {
       await user.type(screen.getByLabelText(label), '0')
     }
     await user.click(screen.getByRole('button', { name: /save profile/i }))
-    await screen.findByRole('heading', { name: 'Your profile is ready.' })
+    await openProfile()
     expect(saved).toMatchObject({ gym_sessions_per_week: 0, steps_per_day: 0 })
   })
 
@@ -301,7 +312,7 @@ describe('Onboarding', () => {
     render(<App />)
     const user = userEvent.setup()
     await user.click(
-      await screen.findByRole('button', { name: 'Edit profile' }),
+      await editProfileButton(),
     )
     expect(
       screen.getByRole('radio', { name: /^Maintain weight/ }),
@@ -331,7 +342,7 @@ describe('Onboarding', () => {
     render(<App />)
     const user = userEvent.setup()
     await user.click(
-      await screen.findByRole('button', { name: 'Edit profile' }),
+      await editProfileButton(),
     )
     await user.click(screen.getByRole('button', { name: /continue/i }))
     await user.click(screen.getByRole('button', { name: /continue/i }))
@@ -364,7 +375,7 @@ describe('Onboarding', () => {
     )
     expect(screen.getByLabelText('Age (years)')).toHaveValue(30)
     await user.click(screen.getByRole('button', { name: /save profile/i }))
-    await screen.findByRole('heading', { name: 'Your profile is ready.' })
+    await openProfile()
   })
 
   it.each([403, 429, 500])(
@@ -374,7 +385,7 @@ describe('Onboarding', () => {
       render(<App />)
       const user = userEvent.setup()
       await user.click(
-        await screen.findByRole('button', { name: 'Edit profile' }),
+        await editProfileButton(),
       )
       await user.click(screen.getByRole('button', { name: /continue/i }))
       fetchMock.mockResolvedValueOnce(json({}, status))
@@ -466,7 +477,7 @@ describe('Onboarding', () => {
       'Could not connect',
     )
     await user.click(screen.getByRole('button', { name: /save profile/i }))
-    await screen.findByRole('heading', { name: 'Your profile is ready.' })
+    await openProfile()
   })
 
   it.each([false, true])(
@@ -555,4 +566,128 @@ describe('Onboarding', () => {
       screen.getByRole('radio', { name: /^Maintain weight/ }),
     ).not.toBeChecked()
   })
+})
+
+describe('Workspace pages', () => {
+  it('starts returning users on the diary with profile and plan details on separate pages', async () => {
+    saved = stored
+    render(<App />)
+    const user = userEvent.setup()
+    await screen.findByRole('heading', { name: 'Food diary.' })
+    expect(screen.getByRole('link', { name: 'Diary' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('heading', { name: 'Your profile is ready.' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Create my plan' })).not.toBeInTheDocument()
+    await openProfile()
+    expect(screen.queryByRole('heading', { name: 'Food diary.' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'Plan' }))
+    expect(await screen.findByRole('button', { name: 'Create my plan' })).toBeEnabled()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  })
+
+  it('requires first-time setup even with a diary deep link, then opens the plan page', async () => {
+    window.history.replaceState(null, '', '/#diary')
+    const user = await start()
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
+    await fillDetails(user)
+    await user.click(screen.getByRole('button', { name: /save profile/i }))
+    expect(await screen.findByRole('button', { name: 'Create my plan' })).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Plan' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('heading', { name: 'Food diary.' })).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  })
+
+  it.each(['plan', 'profile', 'unknown', 'https://untrusted.test'])('restores a safe deep link: %s', async (hash) => {
+    window.history.replaceState(null, '', '/#' + hash)
+    saved = stored
+    render(<App />)
+    const expected = hash === 'plan' ? 'Plan' : hash === 'profile' ? 'Profile' : 'Diary'
+    expect(await screen.findByRole('link', { name: expected })).toHaveAttribute('aria-current', 'page')
+    expect(fetchMock.mock.calls.every(([url]) => String(url).startsWith('/api/'))).toBe(true)
+  })
+
+  it('retains food and profile drafts and the diary date while switching pages and using history', async () => {
+    saved = stored
+    render(<App />)
+    const user = userEvent.setup()
+    fireEvent.change(await screen.findByLabelText('Diary date'), { target: { value: '2020-02-29' } })
+    await user.type(screen.getByLabelText('Food description'), 'two eggs with butter')
+    await user.click(await editProfileButton())
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await user.clear(screen.getByLabelText('Weekly activity'))
+    await user.type(screen.getByLabelText('Weekly activity'), 'A new weekly routine')
+    await user.click(screen.getByRole('link', { name: 'Diary' }))
+    expect(screen.getByLabelText('Food description')).toHaveValue('two eggs with butter')
+    expect(screen.getByLabelText('Diary date')).toHaveValue('2020-02-29')
+    await act(async () => {
+      window.history.replaceState(null, '', '/#profile')
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+    })
+    expect(screen.getByLabelText('Weekly activity')).toHaveValue('A new weekly routine')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(profileCalls()).toHaveLength(0)
+    expect(await screen.findByRole('heading', { name: 'Your profile is ready.' })).toHaveFocus()
+  })
+
+  it('disables tab clicks while saving and preserves a browser-history navigation when the save finishes', async () => {
+    saved = stored
+    render(<App />)
+    const user = userEvent.setup()
+    await user.click(await editProfileButton())
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    let finish!: (response: Response) => void
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    await user.click(screen.getByRole('button', { name: /save profile/i }))
+    const diary = screen.getByRole('link', { name: 'Diary' })
+    expect(diary).toHaveAttribute('aria-disabled', 'true')
+    await user.click(diary)
+    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page')
+    await act(async () => {
+      window.history.replaceState(null, '', '/#diary')
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+      finish(json({ ...stored, age: 31 }))
+    })
+    await waitFor(() => expect(diary).not.toHaveAttribute('aria-disabled'))
+    expect(diary).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('heading', { name: 'Food diary.' })).toBeVisible()
+  })
+
+  it('opens plan creation from diary progress without losing the food draft', async () => {
+    saved = stored
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((url, options) => {
+      if (String(url).startsWith('/api/diary?')) return Promise.resolve(json(diaryDay('2020-02-29', [], false)))
+      return original(url, options)
+    })
+    render(<App />)
+    const user = userEvent.setup()
+    fireEvent.change(await screen.findByLabelText('Diary date'), { target: { value: '2020-02-29' } })
+    await user.type(screen.getByLabelText('Food description'), 'apple')
+    await user.click(await screen.findByRole('button', { name: 'Create a plan' }))
+    expect(await screen.findByRole('button', { name: 'Create my plan' })).toBeEnabled()
+    await user.click(screen.getByRole('link', { name: 'Diary' }))
+    expect(screen.getByLabelText('Food description')).toHaveValue('apple')
+  })
+})
+
+
+it('keeps a late food estimate on its diary page without moving focus from the profile', async () => {
+  saved = stored
+  let finish!: (response: Response) => void
+  const original = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, options) => {
+    if (url === '/api/food/estimate') return new Promise((resolve) => { finish = resolve })
+    return original(url, options)
+  })
+  render(<App />)
+  const user = userEvent.setup()
+  await user.type(await screen.findByLabelText('Food description'), 'apple')
+  await user.click(screen.getByRole('button', { name: 'Estimate nutrition' }))
+  await waitFor(() => expect(finish).toBeDefined())
+  const profileHeading = await openProfile()
+  expect(profileHeading).toHaveFocus()
+  await act(async () => { finish(json(apple)) })
+  expect(profileHeading).toHaveFocus()
+  expect(screen.queryByRole('heading', { name: 'Medium apple' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('link', { name: 'Diary' }))
+  expect(await screen.findByRole('heading', { name: 'Medium apple' })).toHaveFocus()
 })
