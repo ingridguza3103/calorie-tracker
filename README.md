@@ -950,11 +950,14 @@ and saves partial results; it never retries or upgrades the plan. An output
 `status=fail` means a broad case check failed, not a transport failure. Reports
 are saved to ignored `reports/groq-comparison.json`. No key, headers, raw provider
 body or reasoning text is written. No live calls run in CI. For a second run with
-more reasoning, use `--reasoning-effort medium --output reports/groq-medium.json`.
-Relative output paths are based on the repository root. Output must be a `.json`
-file inside that repository's `reports/` directory; traversal or symlink paths
-that escape it, and a symlinked `reports/` directory, are rejected before any
-Groq calls. The destination is checked again before writing the report.
+more reasoning, use `--reasoning-effort medium --report medium`.
+`--report standard` (the default), `--report medium`, and `--report high` select
+the fixed files `reports/groq-comparison.json`, `reports/groq-medium.json`, and
+`reports/groq-high.json`. The report choice only names the file; set reasoning
+effort separately. Arbitrary output paths and the old `--output` option are not
+accepted. Destinations are relative to the repository root. Symlinks that escape
+`reports/`, and a symlinked `reports/` directory, are rejected before any Groq
+calls. The destination is checked again before writing the report.
 Use `--models qwen/qwen3.8-27b` only for an explicit preview-model evaluation.
 
 Prompt character counts are reproducible locally; actual token savings and model

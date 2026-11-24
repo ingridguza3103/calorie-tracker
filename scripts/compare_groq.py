@@ -137,7 +137,7 @@ async def compare(args: argparse.Namespace) -> dict[str, object]:
 
 
 def report_output(path: Path) -> Path:
-    """Resolve CLI paths before checking the fixed report-directory boundary."""
+    """Check that a fixed report destination has not been redirected by links."""
     reports = ROOT / "reports"
     try:
         resolved = (ROOT / path).resolve()
@@ -149,7 +149,7 @@ def report_output(path: Path) -> Path:
         if reports.exists() and not reports.is_dir():
             raise ValueError
     except (OSError, RuntimeError, ValueError):
-        raise ValueError("--output must be a JSON file inside the project's reports directory.") from None
+        raise ValueError("Reports must be JSON files inside the project's reports directory.") from None
     return resolved
 
 
@@ -161,13 +161,20 @@ def main() -> None:
     parser.add_argument("--cases", nargs="+", choices=[case.name for case in CASES])
     parser.add_argument("--reasoning-effort", choices=("low", "medium", "high"), default="low")
     parser.add_argument("--delay", type=float, default=22, help="Seconds between calls, from 0 to 60; default 22.")
-    parser.add_argument("--output", type=Path, default=ROOT / "reports/groq-comparison.json",
-                        help="JSON report path inside the project's reports directory.")
+    parser.add_argument("--report", choices=("standard", "medium", "high"), default="standard",
+                        help="Choose a fixed JSON report file in reports/; filesystem paths are not accepted.")
     args = parser.parse_args()
     if not 0 <= args.delay <= 60:
         parser.error("--delay must be from 0 to 60 seconds.")
+    # CLI input selects a preset; it is never concatenated into a filesystem path.
+    if args.report == "medium":
+        output = ROOT / "reports/groq-medium.json"
+    elif args.report == "high":
+        output = ROOT / "reports/groq-high.json"
+    else:
+        output = ROOT / "reports/groq-comparison.json"
     try:
-        output = report_output(args.output)
+        output = report_output(output)
     except ValueError as error:
         parser.error(str(error))
     try:

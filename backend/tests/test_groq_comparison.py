@@ -168,36 +168,75 @@ def test_report_output_rejects_non_file_destinations(report_root: Path, kind: st
         comparison.report_output(output)
 
 
-def test_main_rejects_invalid_output_before_any_provider_calls(
+@pytest.mark.parametrize("arguments", [
+    ["--output", "../outside.json"], ["--report", "../outside.json"],
+    ["--report", "/tmp/outside.json"], ["--report", "reports/groq-medium.json"],
+    ["--report", "STANDARD"],
+])
+def test_main_rejects_path_arguments_before_any_provider_calls(
     report_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
 ) -> None:
     def forbidden(*args, **kwargs):
         pytest.fail("Invalid output must be rejected before comparing models.")
 
     monkeypatch.setattr(comparison, "compare", forbidden)
-    monkeypatch.setattr(comparison.sys, "argv", ["compare_groq.py", "--run", "--output", "../outside.json"])
+    monkeypatch.setattr(comparison.sys, "argv", ["compare_groq.py", "--run", *arguments])
     with pytest.raises(SystemExit) as error:
         comparison.main()
     assert error.value.code == 2
-    assert "--output must be a JSON file" in capsys.readouterr().err
+    assert "error:" in capsys.readouterr().err
     assert not (report_root / "reports").exists()
     assert not (report_root.parent / "outside.json").exists()
 
 
-@pytest.mark.parametrize("relative", [None, "reports/nested/custom.json"])
-def test_main_writes_validated_reports_and_can_replace_an_existing_report(
-    report_root: Path, monkeypatch: pytest.MonkeyPatch, relative: str | None,
+@pytest.mark.parametrize("redirect", ["directory", "file"])
+def test_main_rejects_redirected_fixed_destinations_before_any_provider_calls(
+    report_root: Path, monkeypatch: pytest.MonkeyPatch, redirect: str,
+) -> None:
+    outside = report_root.parent / "outside"
+    outside.mkdir()
+    protected = outside / "groq-comparison.json"
+    protected.write_text("keep", encoding="utf-8")
+    reports = report_root / "reports"
+    if redirect == "directory":
+        reports.symlink_to(outside, target_is_directory=True)
+    else:
+        reports.mkdir()
+        (reports / "groq-comparison.json").symlink_to(protected)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("A redirected destination must be rejected before comparing models.")
+
+    monkeypatch.setattr(comparison, "compare", forbidden)
+    monkeypatch.setattr(comparison.sys, "argv", ["compare_groq.py", "--run"])
+    with pytest.raises(SystemExit) as error:
+        comparison.main()
+    assert error.value.code == 2
+    assert protected.read_text(encoding="utf-8") == "keep"
+
+
+@pytest.mark.parametrize("preset,filename", [
+    (None, "groq-comparison.json"), ("standard", "groq-comparison.json"),
+    ("medium", "groq-medium.json"), ("high", "groq-high.json"),
+])
+@pytest.mark.parametrize("existing", [False, True])
+def test_main_writes_only_the_selected_fixed_report_and_can_replace_an_existing_report(
+    report_root: Path, monkeypatch: pytest.MonkeyPatch, preset: str | None,
+    filename: str, existing: bool,
 ) -> None:
     async def compare(args):
         return {"rows": [{"status": "pass"}], "live": args.run}
 
-    output = report_root / (relative or "reports/groq-comparison.json")
-    output.parent.mkdir(parents=True)
-    output.write_text("old report", encoding="utf-8")
+    output = report_root / "reports" / filename
+    if existing:
+        output.parent.mkdir(parents=True)
+        output.write_text("old report", encoding="utf-8")
     monkeypatch.setattr(comparison, "compare", compare)
-    monkeypatch.setattr(comparison.sys, "argv", ["compare_groq.py", "--run"] + (["--output", relative] if relative else []))
+    monkeypatch.setattr(comparison.sys, "argv", ["compare_groq.py", "--run"] + (["--report", preset] if preset else []))
     comparison.main()
     assert json.loads(output.read_text(encoding="utf-8")) == {"rows": [{"status": "pass"}], "live": True}
+    assert list(output.parent.iterdir()) == [output]
 
 
 def test_main_dry_run_validates_the_destination_but_writes_nothing(
