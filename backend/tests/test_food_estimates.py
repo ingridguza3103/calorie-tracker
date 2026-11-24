@@ -1,5 +1,6 @@
 import json
 import secrets
+from dataclasses import replace
 from collections.abc import Iterator
 
 import httpx
@@ -251,6 +252,19 @@ def test_cache_version_or_model_change_requests_a_new_estimate(
     second = account.post("/api/food/estimate", json={"description": "apple"}).json()
     assert second["id"] != first["id"] and len(provider) == 2
     assert foods.cache_key("apple", "model-a") != foods.cache_key("apple", "model-b")
+    assert account.get("/api/food/estimates/" + str(first["id"])).json() == first
+
+
+def test_reasoning_setting_change_creates_a_new_estimate_and_retains_the_old_one(
+    account: TestClient, provider: list[httpx.Request], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = account.post("/api/food/estimate", json={"description": "apple"}).json()
+    groq = main.app.dependency_overrides[maintenance.get_groq_client]()
+    monkeypatch.setattr(groq, "settings", replace(groq.settings, reasoning_effort="medium"))
+    second = account.post("/api/food/estimate", json={"description": "apple"})
+    assert second.status_code == 201 and second.json()["id"] != first["id"]
+    assert len(provider) == 2
+    assert account.get("/api/food/estimates/" + str(first["id"])).json() == first
 
 
 def test_deleting_the_account_cascades_its_estimates(
